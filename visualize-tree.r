@@ -66,7 +66,7 @@ option_list <- list(
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
 
-#setWD
+#setWD -- replace this with your own or use getwd()
 working_dir <- getwd()
 setwd(working_dir)
 
