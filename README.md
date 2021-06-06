@@ -8,9 +8,13 @@ A simple comparative genomic analysis is to find similar genes and compare them 
 
 ## Installation
 The following should be in your path
+
 clustalo (ClustalOmega)
+
 FastTree http://www.microbesonline.org/fasttree/
+
 prank http://wasabiapp.org/software/prank/
+
 trimAl http://trimal.cgenomics.org/trimal
 
 Clone the repository which includes two genomes, Arabidopsis (TAIR10) and common bean 2.1
