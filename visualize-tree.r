@@ -91,9 +91,6 @@ message(file_nwk)
 
 
 
-###Several heatmaps to choose from
-counts_file <- read.table("datasets/both_beans_I1H1.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
-
 
 ###If option -n is provided, this will take a subset of the original tree; use a node 1 deeper than you want!
 nodenum <- opt$node
@@ -153,22 +150,24 @@ system(paste("python scripts/extract_seq.py ",opt$entry," ",opt$write,".csv",sep
 system(paste("python scripts/extract_seq_alignment.py ",opt$entry," ",opt$write,".csv.",sep=""))
 system(paste("python scripts/extract_seq_aa.py ",opt$entry," ",opt$write,".csv",sep=""))
 
-#Take in datasets
+#Read datasets for tree visualizatioon
 print("Reading labels file")
-dir3 <- paste("datasets/labels2.txt", sep='')
+dir3 <- paste("datasets/gene_symbols.txt", sep='')
 dd3 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 q <- q %<+% dd3
 
 print("Reading DEG list file")
-dir4 <- paste("datasets/cowpea_venn3.txt", sep='')
+dir4 <- paste("datasets/Vu_DEGs.txt", sep='')
 dd4 <- read.table(dir4, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 q <- q %<+% dd4
 
+counts_file <- read.table("datasets/Vu_inceptin_1hr.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+
 print("Reading counts file")
-counts_file2 <- read.delim2("datasets/cowpea_counts_2.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+counts_file2 <- read.delim2("datasets/Vu_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
 q <- q %<+% counts_file2
 
-counts_file3 <- read.delim2("datasets/2021_04_26_pvul_1hr.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+counts_file3 <- read.delim2("datasets/Pv_inceptin_1hr.txt", sep="\t", header = TRUE, stringsAsFactor=F)
 q <- q %<+% counts_file3
 
 xmax <- (max(q$data$x) + 0.07 + opt$symbol_offset)
@@ -248,7 +247,7 @@ q <- q +
 	geom_tiplab(aes(label=H6_avg,color=sixhr_dmg_color,fontface=sixhr_dmg_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.3)) +
 	geom_tiplab(aes(label=I6_avg,color=sixhr_in_color,fontface=sixhr_in_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.6)) +
 
-	geom_tiplab(aes(label=log1hr), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) + #common bean
+	geom_tiplab(aes(label=log2fold_1hr), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) + #common bean
 	theme(legend.position = "none") +
 	
 	#add column labels at the top, customize this for your dataset
@@ -268,7 +267,7 @@ system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
 system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
 #heatmap colors and limits
-upper <- 7 #these are the upper and lower limits, used to set colors!  Use 8 for lipids_deg, less for both beans
+upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
 lower <- -7
 
 low_color<-"#000099" #blue

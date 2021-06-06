@@ -30,5 +30,9 @@ sh blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 30 -dbs TAIR10cds.fa Pv
 This should populate a subfolder with blast outputs, alignments, and tree visualizations
 
 ## Adding genomes
-Add coding sequences files in fasta format to the genomes subdirectory, then compile a local BLAST database using "makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl". Take note of appropriate header to specify when calling the bash script
+Add coding sequences files in fasta format to the genomes subdirectory, then compile a local BLAST database using 
+
+```makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl```
+
+Take note of appropriate header to specify when calling the bash script
 

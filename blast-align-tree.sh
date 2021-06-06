@@ -5,6 +5,7 @@
 #
 
 # See readme for usage. You can call this script from the terminal with standard arguments entry and entrydb, lists of arguments -n -h, -dbs, with optional arguments -dbs -add -add_db -aa
+### pre-generated example sh blast-align-tree.sh AT4G33430.1 TAIR10cds.fa -n 10 10 10 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
 #### example sh blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 -dbs TAIR10cds.fa Pvul218cds.fa -hdr gene: polypeptide=
 
 # argparse-bash https://github.com/nhoffman/argparse-bash
