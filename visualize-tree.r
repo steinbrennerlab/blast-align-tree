@@ -30,8 +30,7 @@ library("ape")
 sessionInfo()
 
 ### Options. Example usage below:
-### Rscript visualize-tree.R -e AT2G33020.1 -b output 
-### Rscript tree.R --entry fig1_rlck --write test28 --width 2 --height 3.2 -z 2 -i 0.2 --push 5 --label_offset  1.5 --symbol_size 0.5
+### Rscript visualize-tree.R -e AT4G33430.1 -b output 
 option_list <- list( 
     make_option(c("-e", "--entry"), action="store", type="character",
         help="entry"),
@@ -202,6 +201,20 @@ message(d$label)
 #q <- viewClade(q,595)
 d <- d[d$label < 75,] #option to only show some threshold bootstrap
 
+
+#Choose color scheme, Either a pre-defined one (values = col) or just enough to include all species	
+
+#create a character vector to define the color schemes for each aes color factor
+col1 <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","black","green4","blue","green")
+col2 <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","green4","black","blue","green","black")
+names(col2) <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","TAIR10cds.fa","Vung469cds.fa","Pvul218cds.fa","Slyc250cds.fa","Pkinase")
+copb <- c("black","#4a6630","#0014c2","#ffa519")
+standard_colors <- c("black","blue","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")
+
+	
+
+
+
 q <- q + 
 	geom_treescale(fontsize = opt$size, linesize = opt$line,x=0, y=max(q$data$y), width=0.1) + 
 	#cowpeaDEGs
@@ -239,20 +252,11 @@ q <- q +
 	theme(legend.position = "none") +
 	
 	#add column labels at the top, customize this for your dataset
-	annotate("text",size=size,x=xlabs_positions,y=max(q$data$y)+0.7,label=c("Dmg1","Inceptin_effect","Dmg6","Inceptin_effect","Undmg","Dmg1","In1","Dmg6","In6"))
+	annotate("text",size=size,x=xlabs_positions,y=max(q$data$y)+0.7,label=c("Dmg1","Inceptin_effect","Dmg6","Inceptin_effect","Undmg","Dmg1","In1","Dmg6","In6")) +
+	scale_colour_manual(values=standard_colors) #std
 	
 
-#Choose color scheme, Either a pre-defined one (values = col) or just enough to include all species	
 
-#create a character vector to define the color schemes for each aes color factor
-col1 <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","black","green4","blue","green")
-col2 <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","green4","black","blue","green","black") #reverse Ath Vung colors
-copb <- c("black","#4a6630","#0014c2","#ffa519")
-names(col2) <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblue1","TAIR10cds.fa","Vung469cds.fa","Pvul218cds.fa","Slyc250cds.fa","Pkinase")
-	
-#scale_color_manual(values=col2)
-scale_colour_manual(values=c("black","blue","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")) #std
-#scale_colour_manual(values=c("black","#4a6630","#0014c2","#ffa519")) #5 colors in osat slyc tair vung zmays order
 
 #version of color scale for domains
 #msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20))

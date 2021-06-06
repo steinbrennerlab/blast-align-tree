@@ -1,0 +1,10 @@
+Vigun06g225500	Vung469cds.fa
+Vigun07g209900	Vung469cds.fa
+Vigun04g119400	Vung469cds.fa
+Vigun03g133400	Vung469cds.fa
+Vigun03g133600	Vung469cds.fa
+Vigun02g079200	Vung469cds.fa
+Vigun05g024300	Vung469cds.fa
+Vigun04g068600	Vung469cds.fa
+Vigun01g237300	Vung469cds.fa
+Vigun03g077300	Vung469cds.fa
