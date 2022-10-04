@@ -4,7 +4,7 @@ A pipeline to identify homologs and perform phylogenetic analysis with local BLA
 ## Introduction
 One common comparative genomic analysis is to find similar genes and compare them using phylogenetics methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other quantitative data (e.g. expression data) can give quick insights into a gene family of interest.
 
-![](pipeline.png)
+![](pipeline.jpg)
 
 ## Installation
 The following should be in your path
