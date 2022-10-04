@@ -1,10 +1,10 @@
 # blast-align-tree
- A pipeline to visualize homologs in locally stored genomes
+A pipeline to identify homologs and perform phylogenetic analysis with local BLAST databases
  
 ## Introduction
-A simple comparative genomic analysis is to find similar genes and compare them using phylogenetics methods. Given the pace of change in plant genomic resources, it is helpful to compile a local set of genomes with associated BLAST databases. Simple BLAST searches followed by tree building, header parsing, and tree visualization can give a rapid view of a gene family of interest.
+One common comparative genomic analysis is to find similar genes and compare them using phylogenetics methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other quantitative data (e.g. expression data) can give quick insights into a gene family of interest.
 
-(pipeline picture to come)
+![](pipeline.png)
 
 ## Installation
 The following should be in your path
@@ -24,7 +24,12 @@ A markdown workbook of the tree visualization for AT4G33430.1 can be found in /e
 
 Try the pipline yourself by pulling 30 homologs of Arabidopsis ARF19 
 ```
-sh blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 30 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
+bash blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 30 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
+```
+
+You can iterate on the tree by calling visualize-tree.R separately
+```
+Rscript visualize-tree.R -e AT1G19220.1 -b ARFs_v2
 ```
 
 This should populate a subfolder with blast outputs, alignments, and tree visualizations

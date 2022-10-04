@@ -258,7 +258,8 @@ q <- q +
 	geom_tiplab(aes(label=H6_avg,color=sixhr_dmg_color,fontface=sixhr_dmg_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.3)) +
 	geom_tiplab(aes(label=I6_avg,color=sixhr_in_color,fontface=sixhr_in_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.6)) +
 
-	geom_tiplab(aes(label=log2fold_1hr), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) + #common bean
+	geom_tiplab(aes(label=log2fold_1hr), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) +
+	geom_tiplab(aes(label=test), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.0)) +	#common bean
 	theme(legend.position = "none") +
 	
 	#add column labels at the top, customize this for your dataset
