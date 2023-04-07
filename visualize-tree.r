@@ -8,6 +8,7 @@
 #BiocManager::install("EBImage")
 #BiocManager::install("treeio")
 #BiocManager::install("ggtree")
+#quiBiocManager::install("Biostrings")
 #install.packages("phytools")
 #install.packages("optparse")
 #install.packages("tidyselect")
@@ -70,7 +71,7 @@ opt <- parse_args(OptionParser(option_list=option_list))
 working_dir <- getwd()
 setwd(working_dir)
 
-#Takes in the output from FastTree fed by blast_align_tree
+#Takes in the output from FastTree fed by blast_align_tree bash script
 tree_newick <- paste(opt$entry,"/","combinedtree.nwk", sep='')
 message(tree_newick)
 tree <- read.tree(tree_newick)
@@ -160,58 +161,6 @@ dir4 <- paste("datasets/Vu_DEGs.txt", sep='')
 dd4 <- read.table(dir4, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 q <- q %<+% dd4
 
-#Reads RNAseq data for cowpea genes
-counts_file <- read.table("datasets/Vu_inceptin_1hr.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
-
-
-print("Reading counts file")
-counts_file2 <- read.delim2("datasets/Vu_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-q <- q %<+% counts_file2
-
-counts_file3 <- read.delim2("datasets/Pv_inceptin_1hr.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-q <- q %<+% counts_file3
-
-#Uncomment the following lines for unpublished datasets
-#DEG_file <- read.table("datasets/additional_FC_data.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-#head(DEG_file)
-#names(DEG_file)
-#q <- q %<+% DEG_file
-#q <- q + geom_tiplab(aes(label=NGP_WH_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.2)) + 
-#	geom_tiplab(aes(label=NGP_InH_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.4)) + 
-#	geom_tiplab(aes(label=NGP_flg22H_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.6)) + 
-#	geom_tiplab(aes(label=NGP_WH_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.8)) + 
-#	geom_tiplab(aes(label=NGP_InH_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.0)) + 
-#	geom_tiplab(aes(label=NGP_flg22H_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.2))
-
-#If option -l is not zero, include cis_elements
-if (opt$labels_boolean > 0) {
-	print("Reading ciselements file")
-	cis_elements <- read.delim2("C:/science/blast_align_tree/datasets/cis_element_counts.csv", sep=",", header = TRUE, stringsAsFactor=F)
-	q <- q %<+% cis_elements
-	q <- q + geom_tiplab(aes(label=LuxT), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4)) +
-		geom_tiplab(aes(label=LuxA), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.2)) +
-		geom_tiplab(aes(label=Gbox), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.4)) +
-		geom_tiplab(aes(label=EE), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.6)) +
-		geom_tiplab(aes(label=CBS_A), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.8)) +
-		geom_tiplab(aes(label=CBS_B), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.0)) +
-		annotate("text",size=size,x=c(xmax+4,xmax+4.2,xmax+4.4,xmax+4.6,xmax+4.8,xmax+5.0),y=max(q$data$y)+0.7,label=c("LuxT","LuxA","Gbox","EE","CBS-A","CBS-B"))
-}
-
-#If option -l is present, include node numbering
-if (opt$labels_boolean > 0) {
-	q <- q + geom_text2(aes(subset=!isTip, label=node), color="red", hjust=-.3, size=size2) #node labels
-}
-
-#converts "labels" bootstrap to a 1-100 integer
-d <- q$data
-d <- d[!d$isTip,]
-d$label <- as.integer(100*(as.numeric(d$label)))
-message(d$label)
-
-#q <- viewClade(q,595)
-d <- d[d$label < 75,] #option to only show some threshold bootstrap
-
-
 #Choose color scheme, Either a pre-defined one (values = col) or just enough to include all species	
 
 #create a character vector to define the color schemes for each aes color factor
@@ -221,10 +170,18 @@ names(col2) <- c("black","darkgoldenrod1","gray50","red1","steelblue1","slateblu
 copb <- c("black","#4a6630","#0014c2","#ffa519")
 standard_colors <- c("black","blue","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")
 
-	
 
+#Reads RNAseq data for cowpea genes
+counts_file <- read.table("datasets/Vu_inceptin_1hr.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
 
+print("Reading counts file")
+counts_file2 <- read.delim2("datasets/Vu_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+q <- q %<+% counts_file2
 
+counts_file3 <- read.delim2("datasets/Pv_inceptin_1hr.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+q <- q %<+% counts_file3
+
+#Add categories from Steinbrenner 2022, Plant Journal -- cowpea transcriptomic responses to wounding and In11 peptide
 q <- q + 
 	geom_treescale(fontsize = opt$size, linesize = opt$line,x=0, y=max(q$data$y), width=0.1) + 
 	#cowpeaDEGs
@@ -238,9 +195,9 @@ q <- q +
 	geom_tiplab(aes(label=D_sixhr_dmg), color="black", size=(opt$symbol_size),align=T, linetype=NA, offset=(opt$symbol_offset+1.4)) +
 	geom_tiplab(aes(label=D_in_6_subset), color="slateblue1", size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+1.6)) 
 
-xlabs_positions <- c(xmax+0.4,xmax+0.75,xmax+1.4,xmax+1.7,xmax+2.4,xmax+2.75,xmax+3.0,xmax+3.3,xmax+3.6)
+xlabs_positions <- c(xmax+0.4,xmax+0.75,xmax+1.4,xmax+1.7,xmax+2.4,xmax+2.75,xmax+3.0,xmax+3.3,xmax+3.6,xmax+3.8)
 
-
+#Add data from Steinbrenner 2022, Plant Journal -- cowpea transcriptomic responses to wounding and In11 peptide
 q <- q +
 	geom_tiplab(size=size,offset=opt$label_offset,aes(color=hit,fontface="bold")) + #tip labels (gene names)
 	geom_tiplab(aes(label=symbol,color=hit), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset) + #gene symbol names
@@ -257,20 +214,59 @@ q <- q +
 	geom_tiplab(aes(label=I1_avg,color=onehr_in_color,fontface=onehr_in_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.0)) +
 	geom_tiplab(aes(label=H6_avg,color=sixhr_dmg_color,fontface=sixhr_dmg_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.3)) +
 	geom_tiplab(aes(label=I6_avg,color=sixhr_in_color,fontface=sixhr_in_font), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.6)) +
-
+	#bean l2FCdata
 	geom_tiplab(aes(label=log2fold_1hr), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) +
-	geom_tiplab(aes(label=test), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.0)) +	#common bean
 	theme(legend.position = "none") +
-	
-	#add column labels at the top, customize this for your dataset
-	annotate("text",size=size,x=xlabs_positions,y=max(q$data$y)+0.7,label=c("Dmg1","Inceptin_effect","Dmg6","Inceptin_effect","Undmg","Dmg1","In1","Dmg6","In6")) +
+	annotate("text",size=size,x=xlabs_positions,y=max(q$data$y)+0.7,label=c("Dmg1","Inceptin_effect","Dmg6","Inceptin_effect","Undmg","Dmg1","In1","Dmg6","In6","In/H")) +
+	annotate("text",size=size,,x=c(xmax+0.4),y=max(q$data$y)+1.6,hjust=0,label=c("Steinbrenner et al 2022 Plant J DEG categories and log(counts)"))+
 	scale_colour_manual(values=standard_colors) #std
-	
+
+#Add unpublished data from Natalia Guayazan-Palacios. Email us for more info -- uncomment if needed
+#DEG_file <- read.table("datasets/additional_FC_data.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+#head(DEG_file)
+#names(DEG_file)
+#q <- q %<+% DEG_file
+#q <- q + geom_tiplab(aes(label=NGP_WH_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.2)) + 
+#	geom_tiplab(aes(label=NGP_InH_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.4)) + 
+#	geom_tiplab(aes(label=NGP_flg22H_1h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.6)) + 
+#	geom_tiplab(aes(label=NGP_WH_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+4.8)) + 
+#	geom_tiplab(aes(label=NGP_InH_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.0)) + 
+#	geom_tiplab(aes(label=NGP_flg22H_6h_l2FC), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.2))+
+#	annotate("text",size=size,x=c(xmax+4.2,xmax+4.4,xmax+4.6,xmax+4.8,xmax+5.0,xmax+5.2),y=max(q$data$y)+0.7,label=c("WH_1h","InH","flg22H","WH_6h","InH","flg22H"))+
+#	annotate("text",size=size,,x=c(xmax+4.2),y=max(q$data$y)+1.6,hjust=0,label=c("Guayazan-Palacios unpublished data -- log2FC and cisElementCounts"))
+
+#If option -l is not zero, include cis_element counts
+#if (opt$labels_boolean > 0) {
+#	print("Reading ciselements file")
+#	cis_elements <- read.delim2("C:/science/blast_align_tree/datasets/cis_element_counts.csv", sep=",", header = TRUE, stringsAsFactor=F)
+#	q <- q %<+% cis_elements
+#	q <- q + geom_tiplab(aes(label=LuxT), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.4)) +
+#		geom_tiplab(aes(label=LuxA), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.6)) +
+#		geom_tiplab(aes(label=Gbox), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+5.8)) +
+#		geom_tiplab(aes(label=EE), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+6.0)) +
+#		geom_tiplab(aes(label=CBS_A), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+6.2)) +
+#		geom_tiplab(aes(label=CBS_B), size=opt$symbol_size,align=T, linetype=NA, offset=(opt$symbol_offset+6.4)) +
+#		annotate("text",size=size,x=c(xmax+5.4,xmax+5.6,xmax+5.8,xmax+6.0,xmax+6.2,xmax+6.4),y=max(q$data$y)+0.7,label=c("LuxT","LuxA","Gbox","EE","CBS-A","CBS-B"))
+#}
+
+#If option -l is present, include node numbering
+if (opt$labels_boolean > 0) {
+	q <- q + geom_text2(aes(subset=!isTip, label=node), color="red", hjust=-.3, size=size2) #node labels
+}
+
+#converts "labels" bootstrap to a 1-100 integer
+d <- q$data
+d <- d[!d$isTip,]
+d$label <- as.integer(100*(as.numeric(d$label)))
+message(d$label)
+
+#q <- viewClade(q,595)
+d <- d[d$label < 75,] #option to only show some threshold bootstrap
 
 
+#Create a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
 
-#version of color scale for domains
-#msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20))
+##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
 aa <- paste(opt$entry,"/output/",opt$write,".csv.aa.fa", sep='')
 msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
@@ -278,10 +274,10 @@ msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='
 system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
 system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
-#heatmap colors and limits
+#Set visualization parameters for heatmaps
+##heatmap colors and limits
 upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
 lower <- -7
-
 low_color<-"#000099" #blue
 high_color<-"#FF0000" #red
 #high_color<-"#ffa500" #orange
