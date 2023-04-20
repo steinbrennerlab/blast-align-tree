@@ -36,13 +36,14 @@ This should populate a subfolder with blast outputs, alignments, and tree visual
 ## Redraw the ACC Oxidase tree
 You can iterate on the tree by calling visualize-tree.R separately. Use option "-h" to see all visualization options. 
 
-For example, the default tree shows ACOs as outgroups. You can reroot using option -a. Option -b outputs to a new filename, "ACO_v2"
-Reroot on the outgroup oxigenase JRG21 (AT2G38240)
+For example, the default tree shows ACOs as outgroups. You can reroot using option -a. 
+
+Reroot on the outgroup oxigenase JRG21 (AT2G38240). Option -b outputs to a new filename, "ACO_v2"
 ```
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v2 -a AT2G38240
 ```
 
-Now draw a third tree showing just the ACO clade. Specify the node number 58. Other options will show bootstraps (-k 1), omit node number labels (-l 0), and enlarge the gene symbol text (-m 2)
+Now draw a third tree showing just the ACO clade. Specify the node number (-n 58) and the script will use tree_subset to draw a subtree. Other options will show bootstraps (-k 1), omit node number labels (-l 0), and enlarge the gene symbol text (-m 2)
 ```
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -m 2 
 ```
