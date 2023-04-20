@@ -19,20 +19,33 @@ trimAl http://trimal.cgenomics.org/trimal
 
 Clone the repository which includes two genomes, Arabidopsis (TAIR10) and common bean 2.1
 
-An example output can be found in subfolder AT4G33430.1
-A markdown workbook of the tree visualization for AT4G33430.1 can be found in /examples
+An example output can be found in subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
+https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
+![](tree.png)
 
-Try the pipline yourself by pulling 30 homologs of Arabidopsis ARF19 
-```
-bash blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 30 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
-```
 
-You can iterate on the tree by calling visualize-tree.R separately
+##Run blast-align-tree
+Try the pipeline yourself by pulling 15 homologs of Arabidopsis ACC Oxidase 1. Specify the query using the locus ID AT2G19590.1
 ```
-Rscript visualize-tree.R -e AT1G19220.1 -b ARFs_v2
+bash blast-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
-
 This should populate a subfolder with blast outputs, alignments, and tree visualizations
+
+## Redraw trees
+You can iterate on the tree by calling visualize-tree.R separately. Use option "-h" to see all visualization options. 
+
+For example, the default tree shows ACOs as outgroups. You can reroot using option -a. Option -b outputs to a new filename, "ACO_v2"
+Reroot on the outgroup oxigenase JRG21 (AT2G38240)
+```
+Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v2 -a AT2G38240
+```
+
+Now draw a third tree showing just the ACO clade. Specify the node number 58. Other options will show bootstraps (-k 1), omit node number labels (-l 0), and enlarge the gene symbol text (-m 2)
+```
+Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -m 2 
+```
+
+
 
 ## Adding genomes
 Add coding sequences files in fasta format to the genomes subdirectory, then compile a local BLAST database using 

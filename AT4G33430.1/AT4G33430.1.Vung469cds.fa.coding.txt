@@ -8,3 +8,8 @@ Vigun05g024300	Vung469cds.fa
 Vigun04g068600	Vung469cds.fa
 Vigun01g237300	Vung469cds.fa
 Vigun03g077300	Vung469cds.fa
+Vigun02g028600	Vung469cds.fa
+Vigun03g375300	Vung469cds.fa
+Vigun03g058900	Vung469cds.fa
+Vigun06g189200	Vung469cds.fa
+Vigun04g014700	Vung469cds.fa

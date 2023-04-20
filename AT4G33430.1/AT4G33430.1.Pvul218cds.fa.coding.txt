@@ -8,3 +8,8 @@ Phvul.008G022700.1	Pvul218cds.fa
 Phvul.004G046800.1	Pvul218cds.fa
 Phvul.002G257000.1	Pvul218cds.fa
 Phvul.001G252800.1	Pvul218cds.fa
+Phvul.003G044400.1	Pvul218cds.fa
+Phvul.003G152900.1	Pvul218cds.fa
+Phvul.002G276900.1	Pvul218cds.fa
+Phvul.006G174400.1	Pvul218cds.fa
+Phvul.005G178500.1	Pvul218cds.fa

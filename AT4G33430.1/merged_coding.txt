@@ -9,6 +9,11 @@ Phvul.008G022700.1	Pvul218cds.fa
 Phvul.004G046800.1	Pvul218cds.fa
 Phvul.002G257000.1	Pvul218cds.fa
 Phvul.001G252800.1	Pvul218cds.fa
+Phvul.003G044400.1	Pvul218cds.fa
+Phvul.003G152900.1	Pvul218cds.fa
+Phvul.002G276900.1	Pvul218cds.fa
+Phvul.006G174400.1	Pvul218cds.fa
+Phvul.005G178500.1	Pvul218cds.fa
 AT4G33430	TAIR10cds.fa
 AT4G33430	TAIR10cds.fa
 AT2G13790	TAIR10cds.fa
@@ -19,6 +24,11 @@ AT2G13800	TAIR10cds.fa
 AT2G13800	TAIR10cds.fa
 AT1G34210	TAIR10cds.fa
 AT1G34210	TAIR10cds.fa
+AT1G60800	TAIR10cds.fa
+AT5G10290	TAIR10cds.fa
+AT5G10290	TAIR10cds.fa
+AT3G25560	TAIR10cds.fa
+AT3G25560	TAIR10cds.fa
 Vigun06g225500	Vung469cds.fa
 Vigun07g209900	Vung469cds.fa
 Vigun04g119400	Vung469cds.fa
@@ -29,3 +39,8 @@ Vigun05g024300	Vung469cds.fa
 Vigun04g068600	Vung469cds.fa
 Vigun01g237300	Vung469cds.fa
 Vigun03g077300	Vung469cds.fa
+Vigun02g028600	Vung469cds.fa
+Vigun03g375300	Vung469cds.fa
+Vigun03g058900	Vung469cds.fa
+Vigun06g189200	Vung469cds.fa
+Vigun04g014700	Vung469cds.fa
