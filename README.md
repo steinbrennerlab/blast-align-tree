@@ -24,14 +24,16 @@ https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output
 ![](tree.png)
 
 
-##Run blast-align-tree
+## Run blast-align-tree for ACC Oxidase
 Try the pipeline yourself by pulling 15 homologs of Arabidopsis ACC Oxidase 1. Specify the query using the locus ID AT2G19590.1
 ```
 bash blast-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
 This should populate a subfolder with blast outputs, alignments, and tree visualizations
 
-## Redraw trees
+![](ACO-tree-1.png)
+
+## Redraw the ACC Oxidase tree
 You can iterate on the tree by calling visualize-tree.R separately. Use option "-h" to see all visualization options. 
 
 For example, the default tree shows ACOs as outgroups. You can reroot using option -a. Option -b outputs to a new filename, "ACO_v2"
@@ -45,7 +47,7 @@ Now draw a third tree showing just the ACO clade. Specify the node number 58. Ot
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -m 2 
 ```
 
-
+![](ACO-tree-3.png)
 
 ## Adding genomes
 Add coding sequences files in fasta format to the genomes subdirectory, then compile a local BLAST database using 
