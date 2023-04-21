@@ -17,19 +17,20 @@ prank http://wasabiapp.org/software/prank/
 
 trimAl http://trimal.cgenomics.org/trimal
 
-Clone the repository which includes two genomes, Arabidopsis (TAIR10) and common bean 2.1
+Clone the repository which includes three genomes, Arabidopsis (TAIR10), cowpea (Phytozome), and common bean (Phytozome)
 
-An example output can be found in subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
+## Example output
+An example output can be found in the subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
 https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
 ![](tree.png)
 
 
 ## Run blast-align-tree for ACC Oxidase
-Try the pipeline yourself by pulling 15 homologs of Arabidopsis ACC Oxidase 1. Specify the query using the locus ID AT2G19590.1
+Try the pipeline yourself by pulling 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query using the locus ID AT2G19590.1, and the databases to query using the option "-dbs". The -hdr option will parse fasta descriptions for a specific regular expression -- for example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
 bash blast-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
-This should populate a subfolder with blast outputs, alignments, and tree visualizations
+This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations
 
 ![](ACO-tree-1.png)
 
