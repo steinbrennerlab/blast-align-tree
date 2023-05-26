@@ -24,7 +24,6 @@ An example output can be found in the subfolder AT4G33430.1, including a tree PD
 https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
 ![](tree.png)
 
-
 ## Run blast-align-tree for ACC Oxidase
 Try the pipeline yourself by pulling 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query using the locus ID AT2G19590.1, and the databases to query using the option "-dbs". The -hdr option will parse fasta descriptions for a specific regular expression -- for example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
@@ -50,6 +49,12 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 ```
 
 ![](ACO-tree-3.png)
+
+## Use BLASTP instead of TBLASTN
+You can run the pipeline against protein databases with a modified version of the script. Try to pull 10 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana
+```
+bash blastp-align-tree.sh AT2G39660.1 TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+```
 
 ## Adding genomes
 Add coding sequences files in fasta format to the genomes subdirectory, then compile a local BLAST database using 

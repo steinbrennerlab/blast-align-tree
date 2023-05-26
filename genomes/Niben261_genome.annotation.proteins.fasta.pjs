@@ -1,0 +1,24 @@
+{
+  "version": "1.2",
+  "dbname": "Niben261_genome.annotation.proteins.fasta",
+  "dbtype": "Protein",
+  "db-version": 5,
+  "description": "Niben261_genome.annotation.proteins.fasta",
+  "number-of-letters": 20478244,
+  "number-of-sequences": 61328,
+  "last-updated": "2023-05-25T16:42:00",
+  "number-of-volumes": 1,
+  "bytes-total": 36596771,
+  "bytes-to-cache": 21030353,
+  "files": [
+    "Niben261_genome.annotation.proteins.fasta.pdb",
+    "Niben261_genome.annotation.proteins.fasta.phr",
+    "Niben261_genome.annotation.proteins.fasta.pin",
+    "Niben261_genome.annotation.proteins.fasta.pog",
+    "Niben261_genome.annotation.proteins.fasta.pos",
+    "Niben261_genome.annotation.proteins.fasta.pot",
+    "Niben261_genome.annotation.proteins.fasta.psq",
+    "Niben261_genome.annotation.proteins.fasta.ptf",
+    "Niben261_genome.annotation.proteins.fasta.pto"
+  ]
+}
