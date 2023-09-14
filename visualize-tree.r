@@ -220,8 +220,8 @@ p <- p +
 	geom_tiplab(aes(label=I6_avg,fontface=sixhr_in_font), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.6)) +
 	
 	#bean l2FCdata
-	annotate("text",size=size,,x=c(xmax+3.8),y=max(p$data$y)+2.1,hjust=0,label=c("Unpublished Phaseolus vulgaris"))+
-	annotate("text",size=size,,x=c(xmax+3.8),y=max(p$data$y)+1.6,hjust=0,label=c("PE-RNAseq log2(counts)"))+
+	annotate("text",size=size,,x=c(xmax+3.6),y=max(p$data$y)+2.1,hjust=0,label=c("Unpublished Phaseolus vulgaris"))+
+	annotate("text",size=size,,x=c(xmax+3.6),y=max(p$data$y)+1.6,hjust=0,label=c("PE-RNAseq log2(counts)"))+
 	geom_tiplab(aes(label=Pv_Undmg), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+3.8)) +
 	geom_tiplab(aes(label=Dmg1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.0)) +
 	geom_tiplab(aes(label=Inc1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.2)) +
@@ -230,19 +230,30 @@ p <- p +
 
 
 #Add unpublished data from Natalia Guayazan-Palacios. Email us for more info astein10@uw.edu -- uncomment if needed
-#DEG_file <- read.table("datasets/additional_FC_data.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-#head(DEG_file)
-#names(DEG_file)
-#p <- p %<+% DEG_file
-#p <- p + geom_tiplab(aes(label=NGP_WH_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.2)) + 
-#	geom_tiplab(aes(label=NGP_InH_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.4)) + 
-#	geom_tiplab(aes(label=NGP_flg22H_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.6)) + 
-#	geom_tiplab(aes(label=NGP_WH_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.8)) + 
-#	geom_tiplab(aes(label=NGP_InH_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.0)) + 
-#	geom_tiplab(aes(label=NGP_flg22H_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.2))+
-#	annotate("text",size=size,x=c(xmax+4.2,xmax+4.4,xmax+4.6,xmax+4.8,xmax+5.0,xmax+5.2),y=max(p$data$y)+0.7,label=c("WH_1h","InH","flg22H","WH_6h","InH","flg22H"))+
-#	annotate("text",size=size,,x=c(xmax+4.2),y=max(p$data$y)+1.6,hjust=0,label=c("Guayazan-Palacios unpublished data -- log2FC and cisElementCounts"))
+DEG_file <- read.table("datasets/additional_FC_data.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+head(DEG_file)
+names(DEG_file)
+p <- p %<+% DEG_file
+p <- p + geom_tiplab(aes(label=NGP_WH_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.4)) + 
+	geom_tiplab(aes(label=NGP_InH_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.6)) + 
+	geom_tiplab(aes(label=NGP_flg22H_1h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.8)) + 
+	geom_tiplab(aes(label=NGP_WH_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.0)) + 
+	geom_tiplab(aes(label=NGP_InH_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.2)) + 
+	geom_tiplab(aes(label=NGP_flg22H_6h_l2FC), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.4))+
+	annotate("text",size=size,x=c(xmax+4.4,xmax+4.6,xmax+4.8,xmax+5.0,xmax+5.2,xmax+5.4),y=max(p$data$y)+0.7,label=c("WH_1h","InH","flg22H","WH_6h","InH","flg22H"))+
+	annotate("text",size=size,,x=c(xmax+4.4),y=max(p$data$y)+2.8,hjust=0,label=c("Guayazan-Palacios unpubl. data log2FC"))
 
+#Add data from Bjornsen et al 2021. 
+PAMP_degs <- read.delim2("datasets/bjornsen_pamps.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+p <- p %<+% PAMP_degs
+p <- p + 
+	annotate("text",size=size,,x=c(xmax+5.6),y=max(p$data$y)+1.6,hjust=0,label=c("Bjornsen_PAMP-max-log2(FC)"))+
+	geom_tiplab(aes(label=flg22), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+5.6)) +
+	geom_tiplab(aes(label=elf18), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+5.8)) +
+	geom_tiplab(aes(label=nlp20), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+6.0)) +
+	geom_tiplab(aes(label=og), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+6.2)) +
+	geom_tiplab(aes(label=chitin), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+6.4)) +
+	annotate("text",size=size,x=c(xmax+5.6,xmax+5.8,xmax+6.0,xmax+6.2,xmax+6.4),y=max(p$data$y)+0.7,label=c("flg22","elf18","nlp20","OG","chitin"))
 
 #print("Reading ciselements file")
 #cis_elements <- read.delim2("C:/science/blast_align_tree/datasets/cis_element_counts.csv", sep=",", header = TRUE, stringsAsFactor=F)
