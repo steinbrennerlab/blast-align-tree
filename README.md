@@ -63,15 +63,15 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 ![](ACO-tree-3.png)
 
 ## Use BLASTP instead of TBLASTN
-You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana
+You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
 bash blastp-align-tree.sh AT2G39660.1 TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
 
 ## Adding genomes
-You can add additional genomes (coding sequences in fasta format) to the genomes subdirectory. The code below will compile a local BLAST database
+You can add additional genomes to the genomes subdirectory. Because the scripts extract translated nucleotide sequences, the genomes must be coding sequences in fasta format rather than other assembly/annotations. You must add compile a local BLAST database for each added genome
 
 ```makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl```
 
-Take note of appropriate header to specify when calling the bash script
+You can now search "GenomeCDS.fa" if you list it under the -dbs option. Scan your genome file to find an appropriate header (using option -hdr) when calling the bash script
 
