@@ -38,7 +38,7 @@ output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + ".seq.fa"
 print("Finding and translating this gene in the query db: {}".format(filename))
 
 
-#Loop through all sequences in the specified database and write the correct sequence to "entry.seq.fa"
+#Loop through all sequences in the specified fasta file database, and write the correct sequence to "entry.seq.fa"
 for seq_record in SeqIO.parse(filename, "fasta"):
 	
 	save_file = open(output, 'w+') #w+ for write, and plus for create if doesn't exist

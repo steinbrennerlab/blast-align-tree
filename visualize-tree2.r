@@ -170,8 +170,12 @@ p <- p %<+% dd3
 standard_colors <- c("black","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")
 
 #Reads RNAseq data for cowpea genes
-dataset <- read.delim2("datasets/In11_log2FC.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-p <- p %<+% dataset
+xlabs_positions <- c(xmax+0.4,xmax+0.75,xmax+1.4,xmax+1.7,xmax+2.4,xmax+2.75,xmax+3.0,xmax+3.3,xmax+3.6,xmax+3.8,xmax+4.0,xmax+4.2)
+
+
+
+cf2 <- read.delim2("datasets/In11_log2FC.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+p <- p %<+% cf2
 
 p <- p +
 	geom_tiplab(size=size,offset=opt$label_offset,aes(color=genome,fontface="bold")) + 
@@ -187,7 +191,7 @@ p2 <- p
 PAMP_degs <- read.delim2("datasets/bjornsen_pamps.txt", sep="\t", header = TRUE, stringsAsFactor=F)
 p <- p %<+% PAMP_degs
 p <- p + 
-	annotate("text",size=size,,x=c(xmax+1.0),y=max(p$data$y)+1.4,hjust=0,label=c("Bjornsen 2021 max l2(FC)"))+
+	annotate("text",size=size,,x=c(opt$symbol_offset+1.0),y=max(p$data$y)+1.4,hjust=0,label=c("Bjornsen 2021 max l2(FC)"))+
 	geom_tiplab(aes(label=flg22), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+1.0)) +
 	geom_tiplab(aes(label=elf18), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+1.3)) +
 	geom_tiplab(aes(label=nlp20), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+1.6)) +
@@ -198,10 +202,10 @@ p <- p +
 #Add data from Steinbrenner 2022, Plant Journal Table S1 -- cowpea transcriptomic responses to wounding and In11 peptide
 p <- p +
 	#cowpea counts data
-	annotate("text",size=size,x=c(xmax+2.5),y=max(p$data$y)+2.1,label=c("Steinbrenner 2022 TPJ l2(FC)")) +
-	geom_tiplab(aes(label=In11_one_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+2.7)) +
-	geom_tiplab(aes(label=six_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.0))	+
-	annotate("text",size=size,x=c(xmax+2.7,xmax+3.1),y=max(p$data$y)+0.7,label=c("In11_1hr","6hr"))
+	annotate("text",size=size,,x=c(opt$symbol_offset+2.5),y=max(p$data$y)+1.4,hjust=0,label=c("Steinbrenner 2022 TPJ l2(FC)")) +
+	geom_tiplab(aes(label=In11_one_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+2.5)) +
+	geom_tiplab(aes(label=six_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+2.8))	+
+	annotate("text",size=size,x=c(xmax+2.5,xmax+2.8),y=max(p$data$y)+0.7,label=c("In11_1hr","6hr"))
 
 
 #If option -l is specified, include node numbering

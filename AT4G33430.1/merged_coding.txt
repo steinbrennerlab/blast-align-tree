@@ -1,4 +1,4 @@
-taxa	hit
+taxa	genome
 Phvul.006G208100.1	Pvul218cds.fa
 Phvul.007G086800.1	Pvul218cds.fa
 Phvul.004G086300.1	Pvul218cds.fa

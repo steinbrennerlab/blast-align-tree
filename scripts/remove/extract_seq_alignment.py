@@ -1,10 +1,7 @@
 #Trying to pull fasta nucleotide entries based on a text list, with optional aa start and end points
 
-#Takes "entry" the entry gene and subfolder and "list" a filename containing the cds of interest.  As of 9/18, refers to blast_align_tree output folder
+#Takes "entry" the entry gene and subfolder and "list" a filename containing the cds of interest.  
 #Example: python extract_seq.py gene_ID list.txt
-#Example: python extract_seq.py AT5G20480.1 genelist.txt
-## python extract_seq.py 10.csv C:\science\blast_align_tree\Zm00001d014134_T001\Zm00001d014134_T001.nt.merged.fa
-## or python C:\science\blast_align_tree\extract_seq.py 10.csv Zm0001d014134_T001.nt.merged.fa 
 from Bio.Seq import Seq
 from Bio import SeqIO
 from Bio.SeqIO import FastaIO

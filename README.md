@@ -23,15 +23,27 @@ Clone the repository which includes three genomes, Arabidopsis (TAIR10), cowpea 
 An example output can be found in the subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
 https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
 ![](tree.png)
+It is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
+```
+bash tblastn-align-tree.sh AT4G33430.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
+Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
+```
+
 
 ## Run blast-align-tree for ACC Oxidase
 The code below calls the blast-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse fasta descriptions for a specific regular expression -- for example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
-bash blast-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
+bash tblastn-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
-This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations in pdf format
+This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations in pdf format. 
+
+A powerful feature of ggtree is the ability to plot associated data. The default PDF will include log2(fold-change) data from two RNAseq datasets from Bjornsen et al. 2021 (Arabidopsis) and Steinbrenner et al. 2021 (cowpea). 
 
 ![](ACO-tree-1.png)
+
+An alternative PDF with ".msa" appended will show a cartoon alignment. This is useful to show large differences in domain architecture between hits. You can explore the alignments in more detail by opening the .fasta files in the "output" folder
+
+![](ACO-tree-2.png)
 
 ## Redraw the ACC Oxidase tree
 You can generate new versions of the pdf tree by running visualize-tree.R separately. Use option "-h" to see all visualization options. 

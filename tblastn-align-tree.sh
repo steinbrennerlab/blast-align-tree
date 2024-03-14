@@ -46,7 +46,7 @@ mkdir $PWD/$ENTRY
 mkdir $PWD/$ENTRY/output
 
 
-#Finds ENTRY in ENTRYDB and extracts a translation file "ENTRY.seq.fa" to the correct subfolder
+#Finds the sequence with header ENTRY in the fasta file ENTRYDB and extracts a translation file "ENTRY.seq.fa" to the correct subfolder
 if ((${#SLICE[@]}>0)); then
 	python $PWD/scripts/extract_translate.py $ENTRY $ENTRYDB ${SLICE[0]} ${SLICE[1]}
 else
@@ -71,9 +71,8 @@ for ((i=0; i<"${#DATABASE[@]}"; i++)); do
 	
 done
 
-#pause point
+#Optional: uncomment the next line to give a pause point
 #read -p "Pause and check the blast output lists, then press [Enter] key to start..."
-
 	
 #Pull the full length CDS sequences from the blast databases using blastdbcmd (part of the BLAST package) and remove_stop.py
 for ((i=0; i<"${#DATABASE[@]}"; i++))
@@ -104,12 +103,12 @@ do
 python $PWD/scripts/pull_id_fasta_coding.py $ENTRY ${DATABASE[i]} ${HEADER[i]}
 done
 
-#Combines coding files into one merged_coding.txt file, then gives it a header "taxa \t hit" which is needed later in ggtree
+#Combines coding files into one merged_coding.txt file, then gives it a header "taxa \t genome" which is needed later in ggtree
 ls -v $PWD/$ENTRY/*.txt | xargs cat > $PWD/$ENTRY/merged_coding.txt
 sleep 1
-sed -i '1s/^/taxa\thit\n/' $PWD/$ENTRY/merged_coding.txt
+sed -i '1s/^/taxa\tgenome\n/' $PWD/$ENTRY/merged_coding.txt
 
-#Merges all original header translated fasta files and removes any duplicates.  Also simplifies all filenames (awk).
+#Merges all original header translated fasta files and removes any duplicates (awk).  Also simplifies all filenames.
 ls -v $PWD/$ENTRY/*.seq.tblastn.blastdb.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.tblastn.blastdb.merged.fa
 awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.tblastn.blastdb.merged.fa > $PWD/$ENTRY/$ENTRY.nt.merged.fa
 
@@ -122,7 +121,7 @@ awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.tblastn.blastdb.translate.m
 ls -v $PWD/$ENTRY/*.seq.tblastn.blastdb.translate.fa.parse.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.tblastn.blastdb.translate.fa.parse.merged.fa
 awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.tblastn.blastdb.translate.fa.parse.merged.fa > $PWD/$ENTRY/$ENTRY.parse.merged.fa
 
-#To add an outgroup or other special sequence, use the add and add_dbs options. If the option exists, this section adds all add_seq files to the translation file
+#To add an outgroup or other special sequence, use the -add and -add_dbs options. If a sequence is specified in the -add and -add_dbs option, this section adds all add_seq files to the translation file
 echo "(${#ADD_SEQS[0]})"
 if ((${#ADD_SEQS[0]}>0)); then
 	for ((i=0; i<"${#ADD_SEQS[@]}"; i++))
@@ -139,10 +138,8 @@ echo "Running FastTree"
 FastTree -out $PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa.nwk $PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa
 cp $PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa.nwk $PWD/$ENTRY/combinedtree.nwk
 
-
-#Visualize in FigTree if you want
-#C:\Program Files\FigTree\FigTree v1.4.2.exe" $PWD/$ENTRY/combinedtree.nwk
-blasted="" #creates variables blasted and font that scales with how many seqeuences are in the output.  You can feed this to ggtree
+#creates variables blasted and font that scales with how many seqeuences are in the output.  You can feed this to ggtree
+blasted="" 
 declare -i font=0
 blasted+=$ENTRY
 for ((i=0; i<"${#DATABASE[@]}"; i++)); do

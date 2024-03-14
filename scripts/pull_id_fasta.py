@@ -20,6 +20,13 @@ parser.add_argument("trailing", help="trailing filename to merge")
 args = parser.parse_args()
 cwd = os.getcwd()
 
+#This script parses fasta header to look for a specific expression, such as "gene:" and outputs a modified fasta file with the entire fasta description line as the parsed term
+
+#For example, the header
+#>AT3G05780.1 pep chromosome:TAIR10:3:1714941:1719608:-1 gene:AT3G05780 transcript:AT3G05780.1 gene_biotype:protein_coding transcript_biotype:protein_coding gene_symbol:LON3 description:Lon protease homolog 3, mitochondrial [Source:UniProtKB/Swiss-Prot;Acc:Q9M9L8]
+#will become
+#>AT3G05780
+
 print("Pull ID script is using {} as entry".format(args.entry))
 print("Pull ID script is using {} as database".format(args.database))
 print("Pull ID script is looking for word number {} in fasta headers".format(args.headerword))
@@ -27,10 +34,10 @@ filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.
 filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.fa"
 filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + str(args.trailing)
 print("Filename is {}".format(filename))
-#filename = "sbic.fa" #tester entry
+
 output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.parse.fa"
 output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + str(args.trailing) + ".parse.fa"
-#output = "sbic_pull.fa" #tester output
+
 print("Output is {}".format(output))
 print("Parsing {}".format(filename))
 print(args.headerword)

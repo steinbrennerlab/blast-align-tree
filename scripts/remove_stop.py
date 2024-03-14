@@ -6,6 +6,7 @@ import io
 import os
 import re
 
+#Remove stop codon from all sequences in the entry file by looking for stop codons in the last three nucleotides
 parser = argparse.ArgumentParser()
 parser.add_argument("entry", help="name of gene given to original blast scripts")
 parser.add_argument("output")
