@@ -69,7 +69,9 @@ bash blastp-align-tree.sh -q AT2G39660.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10
 ```
 
 ## Multiple queries
-You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs by translating the sequences. For example, the code below will extract BLAST hits for AT5G45250.1 (from TAIR10cds.fa) and Phvul.007G077500.1 (from Pvul218cds.fa)
+You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs by translating the sequences. The main bash script will remove duplicate sequences before alignment with an AWK command.
+
+As an example, the code below will extract BLAST hits for two queries: AT5G45250.1 (from TAIR10cds.fa) and Phvul.007G077500.1 (from Pvul218cds.fa). 
 ```
 bash tblastn-align-tree.sh -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 -qdbs TAIR10cds.fa Pvul218cds.fa TAIR10cds.fa -n 3 4 -dbs TAIR10cds.fa Vung469cds.fa -hdr gene: locus=
 ```
