@@ -15,9 +15,10 @@ args = parser.parse_args()
 codon_stop_array=["TAG","TGA","TAA"]
 
 my_record=[]
+print("Removing stop from "+args.entry)
 
 for record in SeqIO.parse(args.entry, "fasta"):
-	print(record.seq)
+	#print(record.seq)
 	tempRecordSeq = list(record.seq)
 	for index in range(0, len(record.seq), 3):
 		codon = record.seq[index:index+3]

@@ -14,6 +14,7 @@ import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument("entry", help="name of gene given to original blast scripts")
+parser.add_argument("query")
 parser.add_argument("database")
 parser.add_argument("headerword", help="string right before what I'm trying to pull from a fasta header")
 parser.add_argument("trailing", help="trailing filename to merge")
@@ -30,13 +31,13 @@ cwd = os.getcwd()
 print("Pull ID script is using {} as entry".format(args.entry))
 print("Pull ID script is using {} as database".format(args.database))
 print("Pull ID script is looking for word number {} in fasta headers".format(args.headerword))
-filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.fa"
-filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.fa"
-filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + str(args.trailing)
+filename = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + ".seq.tblastn.blastdb.fa"
+filename = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.fa"
+filename = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + str(args.trailing)
 print("Filename is {}".format(filename))
 
-output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.parse.fa"
-output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + str(args.trailing) + ".parse.fa"
+output = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.parse.fa"
+output = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + str(args.trailing) + ".parse.fa"
 
 print("Output is {}".format(output))
 print("Parsing {}".format(filename))

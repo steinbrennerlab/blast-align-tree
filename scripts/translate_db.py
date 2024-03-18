@@ -8,20 +8,20 @@ import argparse
 import io
 import os
 
-#Adam 7/12/2018 wants to translate a batch of CDS in fasta format.  This script takes an argument -- gene name -- and formats it to receive the output from his blast pipeline (genename.seq.tblastn.blastdb.fa) and outputs a translated fasta
+#This script takes an argument -- gene name -- and formats it to receive the output from his blast pipeline (genename.seq.tblastn.blastdb.fa) and outputs a translated fasta
 
-##need to change to parse another argument, database
 
 parser = argparse.ArgumentParser()
 parser.add_argument("entry", help="name of gene given to original blast scripts")
+parser.add_argument("query", help="query")
 parser.add_argument("database")
 args = parser.parse_args()
 cwd = os.getcwd()
 
 print("Translate script is using {} as entry".format(args.entry))
 print("Translate script is using {} as database".format(args.database))
-filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.fa"
-output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.fa"
+filename = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + ".seq.tblastn.blastdb.fa"
+output = cwd + "/" + str(args.entry) + "/" + str(args.query) + "." + str(args.database) + ".seq.tblastn.blastdb.translate.fa"
 print("Translating {}".format(filename))
 
 for seq_record in SeqIO.parse(filename, "fasta"):

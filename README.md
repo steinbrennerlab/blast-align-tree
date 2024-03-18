@@ -25,7 +25,7 @@ https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output
 ![](tree.png)
 It is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
 ```
-bash tblastn-align-tree.sh AT4G33430.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
+bash tblastn-align-tree.sh -q AT4G33430.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
 Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 ```
 
@@ -33,7 +33,7 @@ Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 ## Run blast-align-tree for ACC Oxidase
 The code below calls the blast-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse fasta descriptions for a specific regular expression -- for example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
-bash tblastn-align-tree.sh AT2G19590.1 TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
+bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
 This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations in pdf format. 
 
@@ -55,7 +55,7 @@ The code below will generate a new tree rerooted on the outgroup oxigenase JRG21
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v2 -a AT2G38240
 ```
 
-The code below will create a third tree showing just the ACO clade. Option -n specifies the node number (-n 58) and the script will use tree_subset to draw a subtree. The three other options will show bootstraps (-k 1), omit node number labels (-l 0), and enlarge the gene symbol text (-m 2)
+The code below will create a third tree showing just the ACO clade by using option -n to specify the node number (-n 58). The script will use the function tree_subset to draw a subtree. The three other options specify to show bootstraps (-k 1), to omit node number labels (-l 0), and to enlarge the gene symbol text (-m 2)
 ```
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -m 2 
 ```
@@ -65,8 +65,15 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 ## Use BLASTP instead of TBLASTN
 You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
-bash blastp-align-tree.sh AT2G39660.1 TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+bash blastp-align-tree.sh -q AT2G39660.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
+
+## Multiple queries
+You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs by translating the sequences. For example, the code below will extract BLAST hits for AT5G45250.1 (from TAIR10cds.fa) and Phvul.007G077500.1 (from Pvul218cds.fa)
+```
+bash tblastn-align-tree.sh -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 -qdbs TAIR10cds.fa Pvul218cds.fa TAIR10cds.fa -n 3 4 -dbs TAIR10cds.fa Vung469cds.fa -hdr gene: locus=
+```
+
 
 ## Adding genomes
 You can add additional genomes to the genomes subdirectory. Because the scripts extract translated nucleotide sequences, the genomes must be coding sequences in fasta format rather than other assembly/annotations. You must add compile a local BLAST database for each added genome
