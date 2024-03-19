@@ -49,7 +49,7 @@ for a in "${DATABASE[@]}"; do
     echo "$a"
 done
 echo
-echo Number of subject seqs to pull from tblastn search:
+echo Number of subject seqs to pull from blast search:
 for a in "${SEQS[@]}"; do
     echo "$a"
 done
@@ -69,23 +69,23 @@ for ((i=0; i<"${#QUERIES[@]}"; i++)); do
 	fi
 done
 	
-#The main BLASTP function identifies blast hits, up to a maximum -max_target_seqs defined in the arguments.  We call BLASTP locally to run on blast databases built with protein fasta files, which are located in the subfolder "genomes". We then generate blast outputs with various -outfmt options to ONLY include the hits names (sseqid) in text format. This list of genes is used in future steps
+#The main BLAST function identifies blast hits, up to a maximum -max_target_seqs defined in the arguments.  We call BLAST locally to run on blast databases built with protein fasta files, which are located in the subfolder "genomes". We then generate blast outputs with various -outfmt options to ONLY include the hits names (sseqid) in text format. This list of genes is used in future steps
 #Please note that -max_hsps is set to one; this means only one BLAST hit per target sequence will be recovered
 #The for loop will repeat this for each blast database specified in the command line arguments "-db" 
 for ((j=0; j<"${#QUERIES[@]}"; j++)); do
 	
 	for ((i=0; i<"${#DATABASE[@]}"; i++)); do
 		
-		echo blastp on: "${DATABASE[i]}";
+		echo psiblast on: "${DATABASE[i]}";
 		echo and will pull this many hits, sorted by best e-value...... "${SEQS[i]}";
-		blastp -query $PWD/$ENTRY/${QUERIES[j]}.seq.fa -db $PWD/genomes/${DATABASE[i]} -max_target_seqs ${SEQS[i]} -max_hsps 1 -outfmt "6 sseqid"  -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp
+		psiblast -query $PWD/$ENTRY/${QUERIES[j]}.seq.fa -db $PWD/genomes/${DATABASE[i]} -max_target_seqs ${SEQS[i]} -max_hsps 1 -outfmt "6 sseqid"  -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast
 		
-		#outputs the FULL blastp results (outfmt 1).  You can scan this file to gauge completeness based on e-values, etc
-		blastp -query $PWD/$ENTRY/${QUERIES[j]}.seq.fa -db $PWD/genomes/${DATABASE[i]} -max_hsps 1 -outfmt 1  -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.full
+		#outputs the FULL blast results (outfmt 1).  You can scan this file to gauge completeness based on e-values, etc
+		psiblast -query $PWD/$ENTRY/${QUERIES[j]}.seq.fa -db $PWD/genomes/${DATABASE[i]} -max_hsps 1 -outfmt 1  -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.full
 		
 		#Defines which genome each sequence came from and appends this information
-		head -n 5 $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.full
-		sed -i '1s/^/hit query_id\tsubject_id\tpct_identity\taln_length\tn_of_mismatches\tgap_openings\tq_start q_end\ts_start   s_end\te_value bit_score\n/' $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.full 
+		head -n 5 $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.full
+		sed -i '1s/^/hit query_id\tsubject_id\tpct_identity\taln_length\tn_of_mismatches\tgap_openings\tq_start q_end\ts_start   s_end\te_value bit_score\n/' $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.full 
 		
 		echo test
 
@@ -94,21 +94,21 @@ for ((j=0; j<"${#QUERIES[@]}"; j++)); do
 		
 	#Pull the full length protein sequences from the blast databases using blastdbcmd (part of the BLAST package) and remove_stop.py
 
-		blastdbcmd -db $PWD/genomes/${DATABASE[i]} -entry_batch $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.blastdb.stop.fa
+		blastdbcmd -db $PWD/genomes/${DATABASE[i]} -entry_batch $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast -out $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.blastdb.stop.fa
 		###remove-me good!
 
-		python $PWD/scripts/remove_stop.py $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.blastdb.stop.fa $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.blastp.blastdb.translate.fa
+		python $PWD/scripts/remove_stop.py $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.blastdb.stop.fa $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.blastdb.translate.fa
 
 		echo test2 
 		#Calls python fasta header parser for each of the translations, to get only the part of the header specified in the argument -f
 
 
-		python $PWD/scripts/pull_id_fasta.py $ENTRY ${QUERIES[j]} ${DATABASE[i]} ${HEADER[i]} .seq.blastp.blastdb.translate.fa
+		python $PWD/scripts/pull_id_fasta.py $ENTRY ${QUERIES[j]} ${DATABASE[i]} ${HEADER[i]} .seq.psiblast.blastdb.translate.fa
 
 
 		#Creates coding files, these list of genes with the genome they originally came from
 
-		python $PWD/scripts/pull_id_fasta_coding.py $ENTRY ${QUERIES[j]} ${DATABASE[i]} ${HEADER[i]} .seq.blastp.blastdb.translate.fa
+		python $PWD/scripts/pull_id_fasta_coding.py $ENTRY ${QUERIES[j]} ${DATABASE[i]} ${HEADER[i]} .seq.psiblast.blastdb.translate.fa
 	done
 	
 	
@@ -124,17 +124,17 @@ sed -i '1s/^/taxa\tgenome\n/' $PWD/$ENTRY/merged_coding.txt
 
 #Merges all original header translated fasta files and removes any duplicates (awk).  Also simplifies all filenames.
 
-ls -v $PWD/$ENTRY/*.seq.blastp.blastdb.translate.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.blastp.blastdb.translate.merged.fa
-awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.blastp.blastdb.translate.merged.fa > $PWD/$ENTRY/$ENTRY.merged.fa
+ls -v $PWD/$ENTRY/*.seq.psiblast.blastdb.translate.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.psiblast.blastdb.translate.merged.fa
+awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.psiblast.blastdb.translate.merged.fa > $PWD/$ENTRY/$ENTRY.merged.fa
 
-ls -v $PWD/$ENTRY/*.seq.blastp.blastdb.translate.fa.parse.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.blastp.blastdb.translate.fa.parse.merged.fa
-awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.blastp.blastdb.translate.fa.parse.merged.fa > $PWD/$ENTRY/$ENTRY.parse.merged.fa
+ls -v $PWD/$ENTRY/*.seq.psiblast.blastdb.translate.fa.parse.fa | xargs cat > $PWD/$ENTRY/$ENTRY.seq.psiblast.blastdb.translate.fa.parse.merged.fa
+awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/$ENTRY.seq.psiblast.blastdb.translate.fa.parse.merged.fa > $PWD/$ENTRY/$ENTRY.parse.merged.fa
 	
 #Merges the database-specific fastas for each query, and copies them to an orthogroup subfolder
 mkdir $PWD/$ENTRY/output/orthofinder-input
 for ((i=0; i<"${#DATABASE[@]}"; i++))
 do
-	ls -v $PWD/$ENTRY/*.${DATABASE[i]}.seq.blastp.blastdb.translate.fa.parse.fa | xargs cat > $PWD/$ENTRY/${DATABASE[i]}.parse.merged.fa
+	ls -v $PWD/$ENTRY/*.${DATABASE[i]}.seq.psiblast.blastdb.translate.fa.parse.fa | xargs cat > $PWD/$ENTRY/${DATABASE[i]}.parse.merged.fa
 	awk '/^>/{f=!d[$1];d[$1]=1}f' $PWD/$ENTRY/${DATABASE[i]}.parse.merged.fa > $PWD/$ENTRY/${DATABASE[i]}.parse.merged.rmdup.fa
 	cp $PWD/$ENTRY/${DATABASE[i]}.parse.merged.rmdup.fa $PWD/$ENTRY/output/orthofinder-input/${DATABASE[i]}
 done

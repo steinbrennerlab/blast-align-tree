@@ -4,7 +4,7 @@ A pipeline to identify homologs and perform phylogenetic analysis with local BLA
 ## Introduction
 One common comparative analysis is to find similar genes across a set of genomes and compare them using phylogenetic methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other datasets (e.g. gene expression) can give quick insights into a gene family of interest.
 
-![](pipeline.jpg)
+![](flowchart.png)
 
 ## Installation
 The following should be in your path
@@ -16,6 +16,14 @@ FastTree http://www.microbesonline.org/fasttree/
 prank http://wasabiapp.org/software/prank/
 
 trimAl http://trimal.cgenomics.org/trimal
+
+test if they are installed:
+```
+clustalo -h;
+FastTree -h;
+prank -h;
+trimAl -h;
+```
 
 Clone the repository which includes three genomes, Arabidopsis (TAIR10), cowpea (Phytozome), and common bean (Phytozome)
 
@@ -32,13 +40,13 @@ The pipeline relies on a bash implementation of argparse, which parses the argum
 
 
 ## Run blast-align-tree for ACC Oxidase
-The code below calls the blast-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse fasta descriptions for a specific regular expression -- for example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
+The code below calls the tblastn-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse the fasta descriptions of each database for the provided regular expression. For example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
 This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations in pdf format. 
 
-A powerful feature of ggtree is the ability to plot associated data. The default PDF will include log2(fold-change) data from two RNAseq datasets from Bjornsen et al. 2021 (Arabidopsis) and Steinbrenner et al. 2021 (cowpea). 
+A powerful feature of ggtree is the ability to plot associated data. The default PDF will include log2(fold-change) data from two RNAseq datasets from [Bjornsen et al. 2021](https://www.nature.com/articles/s41477-021-00874-5) (Arabidopsis) and [Steinbrenner et al. 2021](https://onlinelibrary.wiley.com/doi/10.1111/tpj.15732?af=R) (cowpea). 
 
 ![](ACO-tree-1.png)
 
@@ -74,9 +82,14 @@ bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 50 -dbs TAIR10cd
 ```
 
 ## Use BLASTP or PSI-BLAST instead of TBLASTN
-You can run the pipeline against protein databases with a modified version of the script. The code below will pull 11 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
+You can run the pipeline against protein databases with a modified version of the script. The code below will pull 11 NIMIN-1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
-bash blastp-align-tree.sh -q AT2G39660.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+bash blastp-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+```
+
+psi-blast version:
+```
+bash psiblast-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
 
 ## Multiple queries
