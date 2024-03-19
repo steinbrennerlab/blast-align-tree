@@ -171,7 +171,7 @@ cp $PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa.nwk $PWD/$ENTRY/combinedtree.nwk
 
 #creates variables blasted and font that scales with how many seqeuences are in the output.  You can feed this to ggtree
 blasted="" 
-declare -i font=0
+#declare -i font=0
 blasted+=$ENTRY
 for ((i=0; i<"${#DATABASE[@]}"; i++)); do
 	blasted+="_"
@@ -183,7 +183,7 @@ done
 echo $blasted
 mkdir $PWD/$ENTRY/$blasted
 
-echo $font
+#echo $font
 
 #Initiaties the tree visualization within the subfolder $ENTRY and with the number of sequences $BLASTED
 Rscript visualize-tree.R --entry $ENTRY --write $blasted 

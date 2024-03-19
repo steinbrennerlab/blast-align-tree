@@ -30,7 +30,7 @@ cwd = os.getcwd()
 
 #Command line output of steps
 print('\n')
-print("Extract_Translate is using {} as entry".format(args.entry))
+print("Extract_Translate is using {} as entry".format(args.query))
 print("Extract_Translate is using {} as database".format(args.database))
 
 #Use arguments to define files to search

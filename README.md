@@ -28,6 +28,7 @@ It is the result of running the following bash and R scripts to generate fasta, 
 bash tblastn-align-tree.sh -q AT4G33430.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
 Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 ```
+The pipeline relies on a bash implementation of argparse, which parses the argument values listed after each option. For example, argparse will parse the three argument values after option -dbs into a variable array ("TAIR10cds.fa Pvul218cds.fa Vung469cds.fa"), thus specifying which BLAST genome databases to search in later parts of the script
 
 
 ## Run blast-align-tree for ACC Oxidase
@@ -62,8 +63,18 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 
 ![](ACO-tree-3.png)
 
-## Use BLASTP instead of TBLASTN
-You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
+## Re-run the search
+You may want to change the search. The scripts create a subfolder with the query conditions -- drag all contents to this subfolder, or use the bash command 
+```
+find "AT2G19590.1/" -mindepth 1 -maxdepth 1 ! -name "AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" -exec mv {} "AT2G19590.1/AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" \;
+```
+Now you can rerun the original script and change the argument values. For example, the code below will instead find 50 homologs from Arabidopsis only, rather than 15 hits from each of 3 genomes.
+```
+bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 50 -dbs TAIR10cds.fa -hdr gene:
+```
+
+## Use BLASTP or PSI-BLAST instead of TBLASTN
+You can run the pipeline against protein databases with a modified version of the script. The code below will pull 11 BIK1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
 bash blastp-align-tree.sh -q AT2G39660.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
@@ -82,5 +93,10 @@ You can add additional genomes to the genomes subdirectory. Because the scripts 
 
 ```makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl```
 
-You can now search "GenomeCDS.fa" if you list it under the -dbs option. Scan your genome file to find an appropriate header (using option -hdr) when calling the bash script
+You can now search the database you just created, "GenomeCDS.fa", by listing it as an argument value after the -dbs option. Scan your genome file to find an appropriate header (using option -hdr) when calling the bash script
 
+## Future features
+We are working on
+1. iterative blast using a first set of hits as secondary queries
+2. PSIblast implementation
+3. 
