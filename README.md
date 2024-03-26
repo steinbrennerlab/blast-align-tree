@@ -150,7 +150,7 @@ id
 This quick tree with associated data gives two conclusions: 1) the BBL genes seem to be expanded in N.tabacum relative to N.benthamiana, and 2) an Arabidopsis BBL is PAMP-inducible
 
 However, it is always worth viewing your alignments in more detail. Two problems stand out when we look at the multiple sequence alignment PDF:
-![](/images/bbl2.png)
+![](images/bbl2.png)
 
 Put simply, the pipeline allows you to be cautious with your analyses of gene family evolution. Use repeated rounds of querying to refine your trees, search different genome versions, and use different software for alignment and phylogenetic inference before making strong conclusions.
 
