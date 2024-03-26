@@ -106,7 +106,8 @@ bash tblastn-align-tree.sh -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 -qdbs T
 
 
 ## Adding a new genome to explore nicotine biosynthesis
-You can add additional genomes to the genomes subdirectory. You must add compile a local BLAST database for each added genome with the code
+You can add additional genomes to the genomes subdirectory. You must add compile a local BLAST database for each added genome with the code below.
+
 For CDS files:
 ```
 makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl
@@ -121,7 +122,7 @@ For example, we can add the Nicotiana tabacum to explore the evolution of nicoti
 [N.tabacum 1.0 from Sol Genomics] (https://solgenomics.net/ftp/ftp/genomes/Nicotiana_tabacum/edwards_et_al_2017/annotation/)
 Nitab-v4.5_proteins_Edwards2017.fasta
 
-Build the local genome database
+Build the local genome database in the /genomes subfolder:
 ```
 cd genomes
 makeblastdb -in Nitab-v4.5_proteins_Edwards2017.fasta -parse_seqids -dbtype prot
@@ -130,7 +131,7 @@ cd ..
 
 You can now search the database you just created by listing it as an argument value after the -dbs option. For each genome you need to find an appropriate header, which you will list using option -hdr when calling the bash script. If you view Nitab-v4.5_proteins_Edwards2017.fasta you will see that the sequences are in fasta format with a simple gene id followed by description. The header we will specify is "id" which will simply parse the first word of each fasta description.
 
-If the genome database is built you can now blast alongside old genomes. For example, the code below will search for berberine bridge enzymes responsible for nicotine biosynthesis. [Xu et al](https://www.pnas.org/doi/full/10.1073/pnas.1700073114) described that the BBL gene family is expanded relative to tomato, but what about relative to other Nicotiana species? By using BBL2.1 as a query we can also identify hits in N.benthamiana
+If the genome database is built you can now use it in BAT options -qdbs and -dbs alongside old genomes. For example, the code below will search for berberine bridge enzymes responsible for nicotine biosynthesis. [Xu et al](https://www.pnas.org/doi/full/10.1073/pnas.1700073114) described that the BBL gene family is expanded relative to tomato, but what about relative to other Nicotiana species? By using BBL2.1 as a query we can also identify hits in N.benthamiana
 ```
 bash psiblast-align-tree.sh \
 -q Nitab4.5_0006307g0010.1 \
@@ -146,10 +147,10 @@ id \
 id
 ```
 ![](bbl.png)
-This quick tree with associated data gives two clear conclusions: 1) the BBL genes seem to be expanded in N.tabacum relative to N.benthamiana, and 2) an Arabidopsis BBL is PAMP-inducible
+This quick tree with associated data gives two conclusions: 1) the BBL genes seem to be expanded in N.tabacum relative to N.benthamiana, and 2) an Arabidopsis BBL is PAMP-inducible
 
 However, it is always worth viewing your alignments in more detail. Two problems stand out when we look at the multiple sequence alignment PDF:
-![](bbl2.png)
+![](/images/bbl2.png)
 
 Put simply, the pipeline allows you to be cautious with your analyses of gene family evolution. Use repeated rounds of querying to refine your trees, search different genome versions, and use different software for alignment and phylogenetic inference before making strong conclusions.
 
