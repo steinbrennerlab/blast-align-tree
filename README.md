@@ -161,4 +161,5 @@ We are currently working on
 2. better organization of query and sub-query folders
 3. displaying a subsequence of the MSA in the alignment PDF
 4. searching for motifs to display in the MSA
+
 If you'd like to contribute please reach out to Ben and Adam: bdshep@uw.edu and astein10@uw.edu
