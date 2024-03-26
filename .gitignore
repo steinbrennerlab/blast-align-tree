@@ -5,6 +5,7 @@
 !/datasets/**
 !/AT4G33430.1
 !/AT4G33430.1/**
+!/images
 !/images/**
 !/.gitignore
 !/visualize-tree.r
