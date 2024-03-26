@@ -4,7 +4,7 @@ A pipeline to identify homologs and perform phylogenetic analysis with local BLA
 ## Introduction
 One common comparative analysis is to find similar genes across a set of genomes and compare them using phylogenetic methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other datasets (e.g. gene expression) can give quick insights into a gene family of interest.
 
-![](flowchart.png)
+![](images/flowchart.png)
 
 ## Installation
 The following should be in your path
@@ -30,7 +30,7 @@ Clone the repository which includes three genomes, Arabidopsis (TAIR10), cowpea 
 ## Example output
 An example output can be found in the subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
 https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
-![](tree.png)
+![](images/tree.png)
 It is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
 ```
 bash tblastn-align-tree.sh -q AT4G33430.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
@@ -48,11 +48,11 @@ This script will create a folder "AT2G19590.1" and populate a subfolder "output"
 
 A powerful feature of ggtree is the ability to plot associated data. The default PDF will include log2(fold-change) data from two RNAseq datasets from [Bjornsen et al. 2021](https://www.nature.com/articles/s41477-021-00874-5) (Arabidopsis) and [Steinbrenner et al. 2021](https://onlinelibrary.wiley.com/doi/10.1111/tpj.15732?af=R) (cowpea). 
 
-![](ACO-tree-1.png)
+![](images/ACO-tree-1.png)
 
 An alternative PDF with ".msa" appended will show a cartoon alignment. This is useful to show large differences in domain architecture between hits. You can explore the alignments in more detail by opening the .fasta files in the "output" folder
 
-![](ACO-tree-2.png)
+![](images/ACO-tree-2.png)
 
 ## Redraw the ACC Oxidase tree
 You can generate new versions of the pdf tree by running visualize-tree.R separately. Use option "-h" to see all visualization options. 
@@ -69,7 +69,7 @@ The code below will create a third tree showing just the ACO clade by using opti
 Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -m 2 
 ```
 
-![](ACO-tree-3.png)
+![](images/ACO-tree-3.png)
 
 The -n option is especially helpful to generate fasta files of a tree subset. Sequences are listed in the fasta file in the same order as the tree. visualize-tree.R uses TrimAl to remove blank-only columns from the fasta file. This can give a quick view of important differences between sequences, for example the active site of ACOs is shown below using AliView
 
@@ -146,7 +146,7 @@ gene: \
 id \
 id
 ```
-![](bbl.png)
+![](images/bbl.png)
 This quick tree with associated data gives two conclusions: 1) the BBL genes seem to be expanded in N.tabacum relative to N.benthamiana, and 2) an Arabidopsis BBL is PAMP-inducible
 
 However, it is always worth viewing your alignments in more detail. Two problems stand out when we look at the multiple sequence alignment PDF:
