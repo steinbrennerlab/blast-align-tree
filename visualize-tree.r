@@ -22,7 +22,7 @@
 library("ggplot2")
 library("treeio")
 library("phytools") # for sims and ASRs
-library("EBImage") # for images
+#("EBImage") # for images
 library("ggtree")
 library("optparse")
 library("tidytree")
@@ -229,7 +229,7 @@ aa <- paste(opt$entry,"/output/",opt$write,".csv.aa.fa", sep='')
 msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
 msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
 #trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the next step
-system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
+system(paste("trimAl -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
 system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
 #Set visualization parameters for heatmaps

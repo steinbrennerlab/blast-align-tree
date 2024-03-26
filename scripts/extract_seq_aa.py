@@ -38,34 +38,35 @@ print(seqlist)
 
 with open(seqlist) as f:
 
-	for line2 in f:
+    for line2 in f:
 
-		line = line2.rstrip('\n') #Need to strip the line break
+        line = line2.rstrip('\n') #Need to strip the line break
 
-		for seq_record in SeqIO.parse(filename, "fasta"):
+        for seq_record in SeqIO.parse(filename, "fasta"):
 
-			save_file = open(output, 'a+') 
+            save_file = open(output, 'a+') 
 
-			if line == seq_record.id:
-				if args.aa_start > 0:
-					save_file = open(output, 'a')
-					save_file.write('>')
-					save_file.write(seq_record.id)
-					save_file.write('\n') #line break
-					temp = str((seq_record.seq))
-					save_file.write(temp[args.aa_start:args.aa_end])
-					save_file.write('\n')
-					print("Found entry seq! " + args.entry)
-					print(seq_record.description)
-					print(seq_record.seq())
-					save_file.close()
-				else:
-					save_file = open(output, 'a')
-					save_file.write('>')
-					save_file.write(seq_record.id)
-					save_file.write('\n') #line break
-					save_file.write(str((seq_record.seq)))
-					save_file.write('\n')
-
-					save_file.close()
+            if line == seq_record.id:
+                if args.aa_start > 0:
+                    save_file = open(output, 'a')
+                    save_file.write('>')
+                    save_file.write(seq_record.id)
+                    save_file.write('\n') #line break
+                    temp = str((seq_record.seq))
+                    save_file.write(temp[args.aa_start:args.aa_end])
+                    save_file.write('\n')
+                    print("Found entry seq! " + args.entry)
+                    print(seq_record.description)
+                    print(seq_record.seq())
+                    save_file.close()
+                    break
+                else:
+                    save_file = open(output, 'a')
+                    save_file.write('>')
+                    save_file.write(seq_record.id)
+                    save_file.write('\n') #line break
+                    save_file.write(str((seq_record.seq)))
+                    save_file.write('\n')
+                    save_file.close()
+                    break
 

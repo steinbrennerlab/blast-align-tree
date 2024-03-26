@@ -4,9 +4,8 @@
 
 #
 
-# See readme for usage. You can call this script from the terminal with standard arguments entry and entrydb, lists of arguments -n -h, -dbs, with optional arguments -dbs -add -add_db -aa
-### pre-generated example sh blast-align-tree.sh AT4G33430.1 TAIR10cds.fa -n 10 10 10 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
-#### example sh blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 -dbs TAIR10cds.fa Pvul218cds.fa -hdr gene: polypeptide=
+# See readme for usage. You can call this script from the terminal with standard arguments entry and entrydb, lists of arguments -q -qdbs -n -h, -dbs, with optional arguments -dbs -add -add_db -aa
+
 
 # argparse-bash https://github.com/nhoffman/argparse-bash
 source $(dirname $0)/argparse.bash || exit 1
@@ -186,7 +185,7 @@ mkdir $PWD/$ENTRY/$blasted
 #echo $font
 
 #Initiaties the tree visualization within the subfolder $ENTRY and with the number of sequences $BLASTED
-Rscript visualize-tree.R --entry $ENTRY --write $blasted 
+Rscript visualize-tree.r --entry $ENTRY --write $blasted 
 
 #Calls prank for codon alignment based on the aligned amino acid sequences
 prank -convert -d=$PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa -dna=$PWD/$ENTRY/$ENTRY.nt.parse.merged.fa -o=$PWD/$ENTRY/output/codon.fa

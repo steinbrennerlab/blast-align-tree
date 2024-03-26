@@ -4,9 +4,8 @@
 
 #
 
-# See readme for usage. You can run this script from the terminal by adding the first two standard arguments entry and entrydb, lists of arguments -n -h, -dbs, with optional arguments -dbs -add -add_db -aa
-### pre-generated example sh blast-align-tree.sh AT4G33430.1 TAIR10cds.fa -n 10 10 10 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
-#### example sh blast-align-tree.sh AT1G19220.1 TAIR10cds.fa -n 30 30 -dbs TAIR10cds.fa Pvul218cds.fa -hdr gene: polypeptide=
+# # See readme for usage. You can call this script from the terminal with standard arguments entry and entrydb, lists of arguments -q -qdbs -n -h, -dbs, with optional arguments -dbs -add -add_db -aa
+
 
 # Argparse turns arguments into variables
 # argparse-bash https://github.com/nhoffman/argparse-bash
@@ -63,9 +62,9 @@ mkdir $PWD/$ENTRY/output
 #Finds the sequence with header ENTRY in the fasta file ENTRYDB and extracts a translation file "ENTRY.seq.fa" to the correct subfolder
 for ((i=0; i<"${#QUERIES[@]}"; i++)); do
 	if ((${#SLICE[@]}>0)); then
-		python $PWD/scripts/extract_translate.py $ENTRY ${QUERIES[i]} ${QUERY_DATABASES[i]} ${SLICE[0]} ${SLICE[1]}
+		python $PWD/scripts/extract_translation.py $ENTRY ${QUERIES[i]} ${QUERY_DATABASES[i]} ${SLICE[0]} ${SLICE[1]}
 	else
-		python $PWD/scripts/extract_translate.py $ENTRY ${QUERIES[i]} ${QUERY_DATABASES[i]}
+		python $PWD/scripts/extract_translation.py $ENTRY ${QUERIES[i]} ${QUERY_DATABASES[i]}
 	fi
 done
 	
@@ -87,7 +86,7 @@ for ((j=0; j<"${#QUERIES[@]}"; j++)); do
 		head -n 5 $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.full
 		sed -i '1s/^/hit query_id\tsubject_id\tpct_identity\taln_length\tn_of_mismatches\tgap_openings\tq_start q_end\ts_start   s_end\te_value bit_score\n/' $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.full 
 		
-		echo test
+
 
 	#Optional: uncomment the next line to give a pause point
 	#read -p "Pause and check the blast output lists, then press [Enter] key to start..."
@@ -99,7 +98,7 @@ for ((j=0; j<"${#QUERIES[@]}"; j++)); do
 
 		python $PWD/scripts/remove_stop.py $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.blastdb.stop.fa $PWD/$ENTRY/${QUERIES[j]}.${DATABASE[i]}.seq.psiblast.blastdb.translate.fa
 
-		echo test2 
+
 		#Calls python fasta header parser for each of the translations, to get only the part of the header specified in the argument -f
 
 

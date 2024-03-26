@@ -50,22 +50,22 @@ for seq_record in SeqIO.parse(filename, "fasta"):
 			save_file.write('>')
 			save_file.write(seq_record.id)
 			save_file.write('\n') #line break
-			temp = str((translate(seq_record.seq)))
+			temp = str((seq_record.seq))
 			save_file.write(temp[args.aa_start:args.aa_end])
 			save_file.write('\n')
 			print("Found query seq! " + args.query)
 			print(seq_record.description)
-			print(seq_record.translate())
+			print(seq_record)
 			exit()
 		else:
 			save_file = open(output, 'a')
 			save_file.write('>')
 			save_file.write(seq_record.id)
 			save_file.write('\n') #line break
-			save_file.write(str((translate(seq_record.seq))))
+			save_file.write(str((seq_record.seq)))
 			save_file.write('\n')
 			print("Found query seq! " + args.query)
 			print(seq_record.description)
-			print(seq_record.translate())
+			print(seq_record)
 			exit()
 

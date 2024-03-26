@@ -71,25 +71,29 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 
 ![](ACO-tree-3.png)
 
-## Re-run the search
-You may want to change the search. The scripts create a subfolder with the query conditions -- drag all contents to this subfolder, or use the bash command 
+The -n option is especially helpful to generate fasta files of a tree subset. Sequences are listed in the fasta file in the same order as the tree. visualize-tree.R uses TrimAl to remove blank-only columns from the fasta file. This can give a quick view of important differences between sequences, for example the active site of ACOs is shown below using AliView
+
+## Organize the query subfolder before re-running the search
+You will likely want to change the original search conditions for the same query sequence. Since the blast output files populate a main folder named after the query, you need to clear out this folder before re-running the script. The scripts automatically create a subfolder with the query conditions, so you can drag all contents to this subfolder, or use the bash command below.
 ```
 find "AT2G19590.1/" -mindepth 1 -maxdepth 1 ! -name "AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" -exec mv {} "AT2G19590.1/AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" \;
 ```
+(Note that as of this version, the visualize-tree R script relies on the files in the query folder, not the option-specific subfolder, so you can't re-visualize the tree for an old set of query options once you move these files into the subfolder.)
+
 Now you can rerun the original script and change the argument values. For example, the code below will instead find 50 homologs from Arabidopsis only, rather than 15 hits from each of 3 genomes.
 ```
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 50 -dbs TAIR10cds.fa -hdr gene:
 ```
 
 ## Use BLASTP or PSI-BLAST instead of TBLASTN
-You can run the pipeline against protein databases with a modified version of the script. The code below will pull 11 NIMIN-1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
+You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 NIMIN-1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
-bash blastp-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+bash blastp-align-tree.sh -q AT1G02450.1 -qdbs TAIR10protein.fa -n 10 10 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
 
 psi-blast version:
 ```
-bash psiblast-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 11 11 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
+bash psiblast-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 10 10 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
 
 ## Multiple queries
@@ -101,15 +105,54 @@ bash tblastn-align-tree.sh -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 -qdbs T
 ```
 
 
-## Adding genomes
-You can add additional genomes to the genomes subdirectory. Because the scripts extract translated nucleotide sequences, the genomes must be coding sequences in fasta format rather than other assembly/annotations. You must add compile a local BLAST database for each added genome
+## Adding a new genome to explore nicotine biosynthesis
+You can add additional genomes to the genomes subdirectory. You must add compile a local BLAST database for each added genome with the code
+For CDS files:
+```
+makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl
+```
 
-```makeblastdb -in GenomeCDS.fa -parse_seqids -dbtype nucl```
+For protein files:
+```
+makeblastdb -in GenomeProteins.fa -parse_seqids -dbtype prot
+```
 
-You can now search the database you just created, "GenomeCDS.fa", by listing it as an argument value after the -dbs option. Scan your genome file to find an appropriate header (using option -hdr) when calling the bash script
+For example, we can add the Nicotiana tabacum to explore the evolution of nicotine biosynthesis. First, download a new annotated proteome to the /genomes subfolder:
+[N.tabacum 1.0 from Sol Genomics] (https://solgenomics.net/ftp/ftp/genomes/Nicotiana_tabacum/edwards_et_al_2017/annotation/)
+Nitab-v4.5_proteins_Edwards2017.fasta
+
+Build the local genome database
+```
+cd genomes
+makeblastdb -in Nitab-v4.5_proteins_Edwards2017.fasta -parse_seqids -dbtype prot
+cd ..
+```
+
+You can now search the database you just created by listing it as an argument value after the -dbs option. For each genome you need to find an appropriate header, which you will list using option -hdr when calling the bash script. If you view Nitab-v4.5_proteins_Edwards2017.fasta you will see that the sequences are in fasta format with a simple gene id followed by description. The header we will specify is "id" which will simply parse the first word of each fasta description.
+
+If the genome database is built you can now blast alongside old genomes. For example, the code below will search for berberine bridge enzymes responsible for nicotine biosynthesis. [Xu et al](https://www.pnas.org/doi/full/10.1073/pnas.1700073114) described that the BBL gene family is expanded relative to tomato, but what about relative to other Nicotiana species? By using BBL2.1 as a query we can also identify hits in N.benthamiana
+```
+bash psiblast-align-tree.sh \
+-q Nitab4.5_0006307g0010.1 \
+-qdbs Nitab-v4.5_proteins_Edwards2017.fasta \
+-n 20 20 20 \
+-dbs \
+TAIR10protein.fa \
+Nitab-v4.5_proteins_Edwards2017.fasta \
+Niben261_genome.annotation.proteins.fasta \
+-hdr \
+gene: \
+id \
+id
+```
+![](bbl.png)
+This quick tree with associated data gives two clear conclusions: 1) the BBL genes seem to be expanded in N.tabacum relative to N.benthamiana, and 2) an Arabidopsis BBL is PAMP-inducible
+
 
 ## Future features
-We are working on
+We are currently working on
 1. iterative blast using a first set of hits as secondary queries
-2. PSIblast implementation
-3. 
+2. better organization of query and sub-query folders
+3. displaying a subsequence of the MSA in the alignment PDF
+4. searching for motifs to display in the MSA
+If you'd like to contribute please reach out to Ben and Adam: bdshep@uw.edu and astein10@uw.edu
