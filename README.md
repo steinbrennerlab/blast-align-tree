@@ -47,7 +47,7 @@ The subfolder ```/AT4G33430.1/output``` contains the output from a second script
 
 ![](images/tree.png)
 
-##Tutorial
+## Tutorial
 
 ### Run blast-align-tree for ACC Oxidase
 
