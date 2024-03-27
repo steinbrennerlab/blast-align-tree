@@ -29,8 +29,8 @@ trimAl -h;
 
 
 
-# Example output
-The repository includes three starting genomes, Arabidopsis (TAIR10), cowpea (Phytozome), and common bean (Phytozome).
+## Example output
+The repository includes three starting genomes, Arabidopsis (TAIR10), [cowpea v1.1](https://data.jgi.doe.gov/refine-download/phytozome?organism=Vunguiculata&expanded=540%2CPhytozome-469) (Phytozome), and [common bean v1.0](https://data.jgi.doe.gov/refine-download/phytozome?organism=Pvulgaris&expanded=442%2CPhytozome-218) (Phytozome).
 
 The example below is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
 ```
@@ -47,9 +47,9 @@ The subfolder ```/AT4G33430.1/output``` contains the output from a second script
 
 ![](images/tree.png)
 
-#Tutorial
+##Tutorial
 
-## Run blast-align-tree for ACC Oxidase
+### Run blast-align-tree for ACC Oxidase
 
 The pipeline relies on a bash implementation of argparse, which parses the argument values listed after each option. For example, argparse will parse the three argument values after option -dbs into a variable array ("TAIR10cds.fa Pvul218cds.fa Vung469cds.fa"), thus specifying which BLAST genome databases to search in later parts of the script
 
@@ -67,7 +67,7 @@ An alternative PDF with ".msa" appended will show a cartoon alignment. This is u
 
 ![](images/ACO-tree-2.png)
 
-## Redraw the ACC Oxidase tree
+### Redraw the ACC Oxidase tree
 You can generate new versions of the pdf tree by running visualize-tree.R separately. Use option "-h" to see all visualization options. 
 
 For example, the default tree shows ACOs as outgroups. You can reroot using option -a. 
@@ -86,7 +86,7 @@ Rscript visualize-tree.R -e AT2G19590.1 -b ACO_v3 -a AT2G38240 -n 58 -k 1 -l 0 -
 
 The -n option is especially helpful to generate fasta files of a tree subset. Sequences are listed in the fasta file in the same order as the tree. visualize-tree.R uses TrimAl to remove blank-only columns from the fasta file. This can give a quick view of important differences between sequences, for example the active site of ACOs is shown below using AliView
 
-## Organize the query subfolder before re-running the search
+### Organize the query subfolder before re-running the search
 You will likely want to change the original search conditions for the same query sequence. Since the blast output files populate a main folder named after the query, you need to clear out this folder before re-running the script. The scripts automatically create a subfolder with the query conditions, so you can drag all contents to this subfolder, or use the bash command below.
 ```
 find "AT2G19590.1/" -mindepth 1 -maxdepth 1 ! -name "AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" -exec mv {} "AT2G19590.1/AT2G19590.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15" \;
@@ -98,7 +98,7 @@ Now you can rerun the original script and change the argument values. For exampl
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 50 -dbs TAIR10cds.fa -hdr gene:
 ```
 
-## Use BLASTP or PSI-BLAST instead of TBLASTN
+### Use BLASTP or PSI-BLAST instead of TBLASTN
 You can run the pipeline against protein databases with a modified version of the script. The code below will pull 10 NIMIN-1 homologs from Arabidopsis thaliana and Nicotiana benthamiana proteomes
 ```
 bash blastp-align-tree.sh -q AT1G02450.1 -qdbs TAIR10protein.fa -n 10 10 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
@@ -109,7 +109,7 @@ psi-blast version:
 bash psiblast-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 10 10 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta -hdr gene: id
 ```
 
-## Multiple queries
+### Multiple queries
 You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs (by translating the sequences for ```tblastn-align-tree.sh``` or simply extracting the amino acid sequence for ```blastp-align-tree.sh``` or ```psiblast-align-tree.sh```. The main bash script will remove duplicate sequences before alignment with an AWK command.
 
 As an example, the code below will extract BLAST hits for two queries: AT5G45250.1 (from TAIR10cds.fa) and Phvul.007G077500.1 (from Pvul218cds.fa). 
@@ -118,7 +118,7 @@ bash tblastn-align-tree.sh -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 -qdbs T
 ```
 
 
-## Adding a new genome to explore nicotine biosynthesis
+### Adding a new genome to explore nicotine biosynthesis
 You can add additional genomes to the genomes subdirectory. You must add compile a local BLAST database for each added genome with the code below.
 
 For CDS files:
