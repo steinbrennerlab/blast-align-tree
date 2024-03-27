@@ -1,5 +1,6 @@
 # blast-align-tree
-A pipeline to identify homologs and perform phylogenetic analysis with local BLAST databases
+A pipeline to identify BLAST hits and perform phylogenetic analysis across multiple queries and local genome databases
+[![DOI](https://zenodo.org/badge/374224275.svg)](https://zenodo.org/doi/10.5281/zenodo.10888646)
  
 ## Introduction
 One common comparative analysis is to find similar genes across a set of genomes and compare them using phylogenetic methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other datasets (e.g. gene expression) can give quick insights into a gene family of interest.
@@ -97,7 +98,7 @@ bash psiblast-align-tree.sh -q AT1G02450.1 -qdbs TAIR10cds.fa -n 10 10 -dbs TAIR
 ```
 
 ## Multiple queries
-You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs by translating the sequences. The main bash script will remove duplicate sequences before alignment with an AWK command.
+You can add multiple query sequences (-q) to blast each database (-dbs). The bash script will extract the query sequences from the databases specified in -qdbs (by translating the sequences for ```tblastn-align-tree.sh``` or simply extracting the amino acid sequence for ```blastp-align-tree.sh``` or ```psiblast-align-tree.sh```. The main bash script will remove duplicate sequences before alignment with an AWK command.
 
 As an example, the code below will extract BLAST hits for two queries: AT5G45250.1 (from TAIR10cds.fa) and Phvul.007G077500.1 (from Pvul218cds.fa). 
 ```
@@ -131,7 +132,7 @@ cd ..
 
 You can now search the database you just created by listing it as an argument value after the -dbs option. For each genome you need to find an appropriate header, which you will list using option -hdr when calling the bash script. If you view Nitab-v4.5_proteins_Edwards2017.fasta you will see that the sequences are in fasta format with a simple gene id followed by description. The header we will specify is "id" which will simply parse the first word of each fasta description.
 
-If the genome database is built you can now use it in BAT options -qdbs and -dbs alongside old genomes. For example, the code below will search for berberine bridge enzymes responsible for nicotine biosynthesis. [Xu et al](https://www.pnas.org/doi/full/10.1073/pnas.1700073114) described that the BBL gene family is expanded relative to tomato, but what about relative to other Nicotiana species? By using BBL2.1 as a query we can also identify hits in N.benthamiana
+If the genome database is built you can now use it in BAT options -qdbs and -dbs alongside old genomes. For example, the code below will search for berberine bridge enzymes responsible for nicotine biosynthesis. [Xu et al](https://www.pnas.org/doi/full/10.1073/pnas.1700073114) described that the BBL gene family is expanded in tobacco relative to tomato, but what about relative to other Nicotiana species? By using BBL2.1 as a query we can also identify hits in N.benthamiana
 ```
 bash psiblast-align-tree.sh \
 -q Nitab4.5_0006307g0010.1 \
