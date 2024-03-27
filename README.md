@@ -1,9 +1,10 @@
 # blast-align-tree
 A pipeline to identify BLAST hits and perform phylogenetic analysis across multiple queries and local genome databases
+
 [![DOI](https://zenodo.org/badge/374224275.svg)](https://zenodo.org/doi/10.5281/zenodo.10888646)
  
 ## Introduction
-One common comparative analysis is to find similar genes across a set of genomes and compare them using phylogenetic methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other datasets (e.g. gene expression) can give quick insights into a gene family of interest.
+A common task in bioinformatics is to find similar genes across a set of genomes and compare them using phylogenetic methods. As an alternative to using online tools for such analyses, researchers may wish to download genomes of interest for local BLAST and downstream analyses. Homolog curation, tree construction, header parsing, and visualization alongside other datasets (e.g. gene expression) can give quick insights into a gene family of interest.
 
 ![](images/flowchart.png)
 
@@ -26,21 +27,32 @@ prank -h;
 trimAl -h;
 ```
 
-Clone the repository which includes three genomes, Arabidopsis (TAIR10), cowpea (Phytozome), and common bean (Phytozome)
 
-## Example output
-An example output can be found in the subfolder AT4G33430.1, including a tree PDF in the subfolder "output":
-https://github.com/steinbrennerlab/blast-align-tree/blob/main/AT4G33430.1/output/SERK_tree.pdf
-![](images/tree.png)
-It is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
+
+# Example output
+The repository includes three starting genomes, Arabidopsis (TAIR10), cowpea (Phytozome), and common bean (Phytozome).
+
+The example below is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
 ```
 bash tblastn-align-tree.sh -q AT4G33430.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus=
 Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 ```
-The pipeline relies on a bash implementation of argparse, which parses the argument values listed after each option. For example, argparse will parse the three argument values after option -dbs into a variable array ("TAIR10cds.fa Pvul218cds.fa Vung469cds.fa"), thus specifying which BLAST genome databases to search in later parts of the script
 
+The script ```tblastn-align-tree.sh``` creates a folder based on the first query sequence. An example output can be found in the subfolder ```/AT4G33430.1/```. It contains the outputs of blast searches against the three example genomes and biopython scripts to extract these sequences from the genome databases, parse fasta headers, and combine into a single fasta file ```AT4G33430.1.merged.fa```. The script then calls FastTree to generate ```AT4G33430.1.parse.merged.clustal.fa.nwk``
+
+The subfolder ```/AT4G33430.1/output``` contains the output from a second script, ```visualize-tree.r```, which is called by defaul from the main bash script. It contains the following:
+1. Three PDFs. The main pdf ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.pdf``` contains a ggtree representation of the newick tree, with associated data
+2. ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv``` a list of parsed fasta headers from the search in the same order as the tree
+3. Various fasta files such as ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv.aa.fa``` with the sequences provided in the same order as the tree
+
+![](images/tree.png)
+
+#Tutorial
 
 ## Run blast-align-tree for ACC Oxidase
+
+The pipeline relies on a bash implementation of argparse, which parses the argument values listed after each option. For example, argparse will parse the three argument values after option -dbs into a variable array ("TAIR10cds.fa Pvul218cds.fa Vung469cds.fa"), thus specifying which BLAST genome databases to search in later parts of the script
+
 The code below calls the tblastn-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse the fasta descriptions of each database for the provided regular expression. For example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
