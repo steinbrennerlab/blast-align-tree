@@ -38,12 +38,14 @@ bash tblastn-align-tree.sh -q AT4G33430.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TA
 Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 ```
 
-The script ```tblastn-align-tree.sh``` creates a folder based on the first query sequence. An example output can be found in the subfolder ```/AT4G33430.1/```. It contains the outputs of blast searches against the three example genomes and biopython scripts to extract these sequences from the genome databases, parse fasta headers, and combine into a single fasta file ```AT4G33430.1.merged.fa```. The script then calls FastTree to generate ```AT4G33430.1.parse.merged.clustal.fa.nwk``
+The script ```tblastn-align-tree.sh``` creates a folder based on the first query sequence. An example output can be found in the subfolder ```/AT4G33430.1/```. It contains the outputs of blast searches against the three example genomes and biopython scripts to extract these sequences from the genome databases, parse fasta headers, and combine into a single fasta file ```AT4G33430.1.merged.fa```. The script then calls FastTree to generate ```AT4G33430.1.parse.merged.clustal.fa.nwk```
 
-The subfolder ```/AT4G33430.1/output``` contains the output from a second script, ```visualize-tree.r```, which is called by defaul from the main bash script. It contains the following:
+The subfolder ```/AT4G33430.1/output``` contains the output from a second script, ```visualize-tree.r```, which is called by default from the main bash script. It contains the following:
 1. Three PDFs. The main pdf ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.pdf``` contains a ggtree representation of the newick tree, with associated data
 2. ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv``` a list of parsed fasta headers from the search in the same order as the tree
 3. Various fasta files such as ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv.aa.fa``` with the sequences provided in the same order as the tree
+
+A second set of files in ```/AT4G33430.1/output``` contains the output from rerunning ```visualize-tree.r``` with new options ```-e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45``` as specified above. The final tree PDF is below:
 
 ![](images/tree.png)
 
