@@ -173,6 +173,13 @@ standard_colors <- c("black","blue","darkgoldenrod","purple","orange","darkgreen
 dataset <- read.delim2("datasets/In11_log2FC.txt", sep="\t", header = TRUE, stringsAsFactor=F)
 p <- p %<+% dataset
 
+counts_file2 <- read.delim2("datasets/Vu_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+p <- p %<+% counts_file2
+
+counts_file3 <- read.delim2("datasets/Pv_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
+p <- p %<+% counts_file3
+
+
 p <- p +
 	geom_tiplab(size=size,offset=opt$label_offset,aes(color=genome,fontface="bold")) + 
 	#tip labels (gene names) colored by species
@@ -203,6 +210,22 @@ p <- p +
 	geom_tiplab(aes(label=six_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.0))	+
 	annotate("text",size=size,x=c(xmax+2.7,xmax+3.1),y=max(p$data$y)+0.7,label=c("In11_1hr","6hr"))
 
+#Add unpublished data from Phaseolus vulgaris
+p <- p +
+	annotate("text",size=size,,x=c(xmax+3.3),y=max(p$data$y)+2.1,hjust=0,label=c("Phaseolus vulgaris / Vigna unguiculata"))+
+	annotate("text",size=size,,x=c(xmax+3.3),y=max(p$data$y)+1.6,hjust=0,label=c("PE-RNAseq log2(counts)"))+
+	geom_tiplab(aes(label=Pv_Undmg), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+3.3)) +
+	geom_tiplab(aes(label=Dmg1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.5)) +
+	geom_tiplab(aes(label=Inc1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.7)) +
+	theme(legend.position = "none") + 
+	annotate("text",size=size,x=c(xmax+3.3,xmax+3.5,xmax+3.7),y=max(p$data$y)+0.7,label=c("U1","H1","I1")) +
+	
+	geom_tiplab(aes(label=U1_avg), color="gray50",size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.9)) +
+	geom_tiplab(aes(label=H1_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.1)) +
+	geom_tiplab(aes(label=I1_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.3)) +
+	geom_tiplab(aes(label=H6_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.5)) +
+	geom_tiplab(aes(label=I6_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.7)) +
+	annotate("text",size=size,x=c(xmax+3.9,xmax+4.1,xmax+4.3,xmax+4.5,xmax+4.7),y=max(p$data$y)+0.7,label=c("U1","H1","I1","H6","I6"))
 
 #If option -l is specified, include node numbering
 if (opt$labels_boolean > 0) {

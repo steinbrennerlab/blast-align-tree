@@ -30,7 +30,7 @@ trimAl -h;
 
 
 ## Example output
-The repository includes three starting genomes, Arabidopsis (TAIR10), [cowpea v1.1](https://data.jgi.doe.gov/refine-download/phytozome?organism=Vunguiculata&expanded=540%2CPhytozome-469) (Phytozome), and [common bean v1.0](https://data.jgi.doe.gov/refine-download/phytozome?organism=Pvulgaris&expanded=442%2CPhytozome-218) (Phytozome).
+The repository includes three starting genomes, the complete set of coding sequences from Arabidopsis (TAIR10), [cowpea v1.1](https://data.jgi.doe.gov/refine-download/phytozome?organism=Vunguiculata&expanded=540%2CPhytozome-469) (Phytozome), and [common bean v1.0](https://data.jgi.doe.gov/refine-download/phytozome?organism=Pvulgaris&expanded=442%2CPhytozome-218) (Phytozome).
 
 The example below is the result of running the following bash and R scripts to generate fasta, newick files, and creating a subtree PDF
 ```
@@ -45,7 +45,7 @@ The subfolder ```/AT4G33430.1/output``` contains the output from a second script
 2. ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv``` a list of parsed fasta headers from the search in the same order as the tree
 3. Various fasta files such as ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv.aa.fa``` with the sequences provided in the same order as the tree
 
-A second set of files in ```/AT4G33430.1/output``` contains the output from rerunning ```visualize-tree.r``` with new options ```-e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45``` as specified above. The final tree PDF is below:
+A second set of files in ```/AT4G33430.1/output``` contains the output from re-running ```visualize-tree.r``` a second time but with new options ```-e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45``` as specified above. The final tree PDF is below:
 
 ![](images/tree.png)
 
@@ -55,7 +55,7 @@ A second set of files in ```/AT4G33430.1/output``` contains the output from reru
 
 The pipeline relies on a bash implementation of argparse, which parses the argument values listed after each option. For example, argparse will parse the three argument values after option -dbs into a variable array ("TAIR10cds.fa Pvul218cds.fa Vung469cds.fa"), thus specifying which BLAST genome databases to search in later parts of the script
 
-The code below calls the tblastn-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse the fasta descriptions of each database for the provided regular expression. For example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
+The code below calls the tblastn-align-tree.sh bash script to find 15 homologs of Arabidopsis ACC Oxidase 1 from the Arabidopsis, bean, and cowpea genomes using tblastn against the complete set of coding sequences in each database. Specify the query sequence using the locus ID AT2G19590.1 from TAIR10cds.fa. Specify the databases to query using the option "-dbs". The -hdr option will parse the fasta descriptions of each database for the provided regular expression. For example it will look for "polypeptide=" in the common bean fasta descriptions (Pvul218cds.fa)
 ```
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
