@@ -1,4 +1,7 @@
+# Ignore everything in the root directory
 *
+
+# But don't ignore these specific directories and their contents
 !/scripts
 !/scripts/**
 !/datasets
@@ -7,12 +10,17 @@
 !/AT4G33430.1/**
 !/images
 !/images/**
+
+# Don't ignore the .gitignore file itself
 !/.gitignore
+
+# Don't ignore these specific files in the root directory
 !/visualize-tree.r
 !/psiblast-align-tree.sh
 !/tblastn-align-tree.sh
 !/blastp-align-tree.sh
 !/bat-flowchart.pptx
+!/gene_symbols.txt
 !/flowchart.png
 !/tree.png
 !/bbl.png

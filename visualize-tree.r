@@ -49,7 +49,7 @@ option_list <- list(
         help="line_width"),
 	make_option(c("-x", "--push"), action="store", default=0.3, type="numeric", 
         help="push right side to make room"),
-	make_option(c("-r", "--symbol_offset"), action="store", default=1, type="numeric", 
+	make_option(c("-r", "--symbol_offset"), action="store", default=0.5, type="numeric", 
         help="font size for gene symbols"),
 	make_option(c("-y", "--label_offset"), action="store", default=0.05, type="numeric", 
         help="font size for gene symbols"),
@@ -95,6 +95,7 @@ file_nwk <- paste(opt$entry,"/output/",opt$write,".nwk", sep='')
 message(file_nwk)
 
 
+
 #optional reroot if option -a is specified
 if (length(opt$reroot)>0) {
 	tree <- reroot(tree, which(tree$tip.label == opt$reroot))
@@ -122,14 +123,12 @@ p <- p %<+% dd
 a <- as.integer(length(tree$tip.label))
 print(a)
 
-#set height and width dimensions for output based on number of tips
+#set height dimension for output based on number of tips
 node_count <- length(tree$tip.label)
 print("The number of nodes in tree p is:")
 print(node_count)
 opt$height <- ((node_count/11.27)+0.5)
-xmax <- (max(p$data$x) + 0.07 + opt$symbol_offset)
 
-opt$width <- max(p$data$x) + 2.5
 
 #Define tip and node label sizes
 size <- opt$size
@@ -146,6 +145,79 @@ message(size2)
 #dd2 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F) #optional, reads a second merged file!
 #p <- p %<+% dd2 + geom_tippoint(aes(size=size2/2,color=type,shape=type)) + scale_size_identity() #weird, you need scale_size_identity! https://groups.google.com/forum/#!topic/bioc-ggtree/XHaq9Sk3b00
 
+
+# Read all datasets in the /datasets folder
+
+## Function to read datasets from a folder
+print("new function")
+read_datasets <- function(folder_path) {
+  print("read datasets function")
+  dataset_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+  datasets <- list()
+  
+  for (file in dataset_files) {
+    print(file)
+	dataset_name <- tools::file_path_sans_ext(basename(file))
+    datasets[[dataset_name]] <- read.delim2(file, sep = "\t", header = TRUE, stringsAsFactor = FALSE)
+	print(dataset_name)
+  }
+  
+  return(datasets)
+}
+
+## Function to add datasets to the tree
+add_datasets_to_tree <- function(p, datasets, base_offset) {
+  cumulative_offset <- opt$symbol_offset + 0.5
+  for (i in seq_along(datasets)) {
+    dataset_name <- names(datasets)[i]
+    dataset <- datasets[[i]]
+    
+    p <- p %<+% dataset
+    
+    # Add dataset name as text annotation
+    # This should stay fixed for each dataset
+    p <- p + annotate("text", size = opt$size, x = max(p$data$x) + base_offset + cumulative_offset,
+                      y = max(p$data$y) + 2.4, label = dataset_name, fontface = "bold", hjust = 0)
+    
+    # Add columns as tip labels
+    columns_to_display <- names(dataset)[-1]  # Exclude the first column
+    for (j in seq_along(columns_to_display)) {
+      column_name <- columns_to_display[j]
+      column_offset <- (j - 1) * 0.2
+      
+      # The column data should use the cumulative offset plus its own offset
+      p <- p + geom_tiplab(aes(label = .data[[column_name]]), size = 1, align = TRUE,
+                           linetype = NA, offset = base_offset + cumulative_offset + column_offset)
+      
+      # Column names should align with their data
+      p <- p + annotate("text", size = opt$size * 0.8, 
+                        x = max(p$data$x) + base_offset + cumulative_offset + column_offset,
+                        y = max(p$data$y) + 0.7, 
+                        label = column_name, 
+                        angle = 45, 
+                        hjust = 0)
+    }
+    
+    # Update the cumulative offset after processing each dataset
+    cumulative_offset <- cumulative_offset + length(columns_to_display) * 0.2 + 0.15
+  }
+  total_offset <<- cumulative_offset
+  return(p)
+}
+
+
+xmax <- max(p$data$x)
+  # Read datasets
+  datasets <- read_datasets("datasets/")
+  
+  # Add datasets to the tree
+  p <- add_datasets_to_tree(p, datasets, base_offset = 0)
+  
+
+opt$width <- max(p$data$x) + total_offset
+
+###########################
+
 #Takes the tree object and converts it to a dataframe using fortify and data.frame. then reorders it according to the graphical position
 #Apparently fortify might deprecate and switch to the "broom" package for tidying data. In the future it would be good to do this on the ggtree object "p", not "tree", so that flip functions will be reflected in the output
 tips <- fortify(tree)
@@ -160,26 +232,17 @@ write(as.matrix(tips)[,1][i],file=file_csv,sep=",",append=T)
 system(paste("python scripts/extract_seq.py ",opt$entry," ",opt$write,".csv",sep=""))
 system(paste("python scripts/extract_seq_aa.py ",opt$entry," ",opt$write,".csv",sep=""))
 
-#Read gene symbols to display next to annotated genes
+# Read gene symbols to display next to annotated genes
+  ## Read gene symbols file from root directory
 print("Reading labels file")
-dir3 <- paste("datasets/gene_symbols.txt", sep='')
+dir3 <- paste("gene_symbols.txt", sep='')
 dd3 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 p <- p %<+% dd3
 
-#create a character vector to define the color schemes for each aes color factor
+  ## create a character vector to define the color schemes for each aes color factor
 standard_colors <- c("black","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")
 
-#Reads RNAseq data for cowpea genes
-dataset <- read.delim2("datasets/In11_log2FC.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-p <- p %<+% dataset
-
-counts_file2 <- read.delim2("datasets/Vu_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-p <- p %<+% counts_file2
-
-counts_file3 <- read.delim2("datasets/Pv_counts.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-p <- p %<+% counts_file3
-
-
+  ## Add gene symbol labels to the tree using offsets specified in the options
 p <- p +
 	geom_tiplab(size=size,offset=opt$label_offset,aes(color=genome,fontface="bold")) + 
 	#tip labels (gene names) colored by species
@@ -187,47 +250,11 @@ p <- p +
 	#gene symbol names
 	scale_colour_manual(values=standard_colors)
 
-#Create a duplicate tree for heatmap and MSA trees
+  ## Create a duplicate tree for heatmap and MSA trees below
 p2 <- p
 
-#Add data from Bjornsen et al 2021. 
-PAMP_degs <- read.delim2("datasets/bjornsen_pamps.txt", sep="\t", header = TRUE, stringsAsFactor=F)
-p <- p %<+% PAMP_degs
-p <- p + 
-	annotate("text",size=size,,x=c(xmax+1.0),y=max(p$data$y)+1.4,hjust=0,label=c("Bjornsen 2021 max l2(FC)"))+
-	geom_tiplab(aes(label=flg22), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+1.0)) +
-	geom_tiplab(aes(label=elf18), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+1.3)) +
-	geom_tiplab(aes(label=nlp20), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+1.6)) +
-	geom_tiplab(aes(label=og), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+1.9)) +
-	geom_tiplab(aes(label=chitin), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+2.2)) +
-	annotate("text",size=size,x=c(xmax+1.0,xmax+1.3,xmax+1.6,xmax+1.9,xmax+2.2),y=max(p$data$y)+0.7,label=c("flg22","elf18","nlp20","OG","chitin"))
 
-#Add data from Steinbrenner 2022, Plant Journal Table S1 -- cowpea transcriptomic responses to wounding and In11 peptide
-p <- p +
-	#cowpea counts data
-	annotate("text",size=size,x=c(xmax+2.5),y=max(p$data$y)+2.1,label=c("Steinbrenner 2022 TPJ l2(FC)")) +
-	geom_tiplab(aes(label=In11_one_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+2.7)) +
-	geom_tiplab(aes(label=six_hr),size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.0))	+
-	annotate("text",size=size,x=c(xmax+2.7,xmax+3.1),y=max(p$data$y)+0.7,label=c("In11_1hr","6hr"))
-
-#Add unpublished data from Phaseolus vulgaris
-p <- p +
-	annotate("text",size=size,,x=c(xmax+3.3),y=max(p$data$y)+2.1,hjust=0,label=c("Phaseolus vulgaris / Vigna unguiculata"))+
-	annotate("text",size=size,,x=c(xmax+3.3),y=max(p$data$y)+1.6,hjust=0,label=c("PE-RNAseq log2(counts)"))+
-	geom_tiplab(aes(label=Pv_Undmg), size=1, align=T, linetype=NA, offset=(opt$symbol_offset+3.3)) +
-	geom_tiplab(aes(label=Dmg1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.5)) +
-	geom_tiplab(aes(label=Inc1hr), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.7)) +
-	theme(legend.position = "none") + 
-	annotate("text",size=size,x=c(xmax+3.3,xmax+3.5,xmax+3.7),y=max(p$data$y)+0.7,label=c("U1","H1","I1")) +
-	
-	geom_tiplab(aes(label=U1_avg), color="gray50",size=1,align=T, linetype=NA, offset=(opt$symbol_offset+3.9)) +
-	geom_tiplab(aes(label=H1_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.1)) +
-	geom_tiplab(aes(label=I1_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.3)) +
-	geom_tiplab(aes(label=H6_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.5)) +
-	geom_tiplab(aes(label=I6_avg), size=1,align=T, linetype=NA, offset=(opt$symbol_offset+4.7)) +
-	annotate("text",size=size,x=c(xmax+3.9,xmax+4.1,xmax+4.3,xmax+4.5,xmax+4.7),y=max(p$data$y)+0.7,label=c("U1","H1","I1","H6","I6"))
-
-#If option -l is specified, include node numbering
+# If option -l is specified, include node numbering
 if (opt$labels_boolean > 0) {
 	p <- p + geom_text2(aes(subset=!isTip, label=node), color="red", hjust=-.3, size=size2) #node labels
 }
@@ -251,34 +278,37 @@ msa_colors <- c("gray85",rep(c("black"),each=30))
 aa <- paste(opt$entry,"/output/",opt$write,".csv.aa.fa", sep='')
 msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
 msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
-#trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the next step
+
+#trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the MSA visualization
 system(paste("trimAl -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
 system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
-#Set visualization parameters for heatmaps
-##heatmap colors and limits
-upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
-lower <- -7
-low_color<-"#000099" #blue
-high_color<-"#FF0000" #red
-#high_color<-"#ffa500" #orange
-#high_color<-"#FFCC33" #yellow
 
+#Prints 2 PDFs: data as text, and multiple sequence alignment cartoon
 
-#Prints 3 PDFs: data as text, data file as heatmap input, and multiple sequence alignment cartoon
 
 pdf(file, height=opt$height, width=opt$width)
 p
 dev.off()
 
+#Optional -- read a datafile for a heatmap
 
-print("Reading heatmap data file")
-counts_file <- read.table("datasets/In11_log2FC.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
-p <- p %<+% counts_file
+#Set visualization parameters for heatmaps
+##heatmap colors and limits
+#upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
+#lower <- -7
+#low_color<-"#000099" #blue
+#high_color<-"#FF0000" #red
+#high_color<-"#ffa500" #orange
+#high_color<-"#FFCC33" #yellow
 
-pdf(paste(file,".heatmap.pdf",sep=""), height=opt$height, width=opt$width)
-gheatmap(p2,counts_file, offset = opt$heatmap_offset, width=opt$heatmap_width+3, font.size=size, colnames_angle=-20, hjust=0, color="black") + scale_fill_gradient2(low=low_color,high=high_color,mid="white",limits=c(lower,upper)) 
-dev.off()
+#print("Reading heatmap data file")
+#counts_file <- read.table("datasets/In11_log2FC.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+#p <- p %<+% counts_file
+
+#pdf(paste(file,".heatmap.pdf",sep=""), height=opt$height, width=opt$width)
+#gheatmap(p2,counts_file, offset = opt$heatmap_offset, width=opt$heatmap_width+3, font.size=size, colnames_angle=-20, hjust=0, color="black") + #scale_fill_gradient2(low=low_color,high=high_color,mid="white",limits=c(lower,upper)) 
+#dev.off()
 
 
 pdf(paste(file,".MSA.pdf",sep=""), height=opt$height, width=opt$width)
