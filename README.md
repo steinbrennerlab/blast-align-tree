@@ -17,7 +17,7 @@ FastTree http://www.microbesonline.org/fasttree/
 
 prank http://wasabiapp.org/software/prank/
 
-trimAl http://trimal.cgenomics.org/trimal
+trimAl https://vicfero.github.io/trimal/
 
 test if they are installed:
 ```
