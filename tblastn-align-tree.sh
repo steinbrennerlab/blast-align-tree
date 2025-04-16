@@ -172,13 +172,15 @@ cp $PWD/$ENTRY/$ENTRY.parse.merged.clustal.fa.nwk $PWD/$ENTRY/combinedtree.nwk
 blasted="" 
 #declare -i font=0
 blasted+=$ENTRY
-for ((i=0; i<"${#DATABASE[@]}"; i++)); do
-	blasted+="_"
-	blasted+=${DATABASE[i]}
-	blasted+="_"
-	blasted+=${SEQS[i]}
-	font+=${SEQS[i]}
-done
+blasted+="_"
+blasted+=${DATABASE[0]}
+#for ((i=0; i<"${#DATABASE[@]}"; i++)); do
+#	blasted+="_"
+#	blasted+=${DATABASE[i]}
+#	blasted+="_"
+#	blasted+=${SEQS[i]}
+#	font+=${SEQS[i]}
+#done
 echo $blasted
 mkdir $PWD/$ENTRY/$blasted
 

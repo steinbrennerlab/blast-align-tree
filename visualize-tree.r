@@ -8,7 +8,7 @@
 #BiocManager::install("EBImage")
 #BiocManager::install("treeio")
 #BiocManager::install("ggtree")
-#quiBiocManager::install("Biostrings")
+#BiocManager::install("Biostrings")
 #install.packages("phytools")
 #install.packages("optparse")
 #install.packages("tidyselect")
