@@ -1,66 +1,37 @@
-#Trying to pull fasta nucleotide entries based on a text list, with optional aa start and end points
-
-#Takes "entry" the entry gene and subfolder and "list" a filename containing the cds of interest.
-#Example: python extract_seq.py gene_ID list.txt
-
-from Bio.Seq import Seq
-from Bio import SeqIO
-from Bio.SeqIO import FastaIO
-from Bio.SeqRecord import SeqRecord
-from Bio.Seq import translate
-from Bio.Blast import NCBIWWW
-from Bio.Blast import NCBIXML
+#!/usr/bin/env python3
 import argparse
-import io
-import os
-import re
+from Bio import SeqIO
 
-parser = argparse.ArgumentParser()
-parser.add_argument("entry", help="name of gene given to original blast scripts")
-parser.add_argument("list", help="name of the genes list, a text file with one gene on each line.  As of 9/8/18, tree.R can generate this")
-parser.add_argument("aa_start", type=int, nargs='?', default=0)
-parser.add_argument("aa_end", type=int, nargs='?')
-args = parser.parse_args()
-cwd = os.getcwd()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("entry", help="name of gene folder")
+    parser.add_argument("list", help="file with one gene ID per line")
+    parser.add_argument("aa_start", type=int, nargs='?', default=0)
+    parser.add_argument("aa_end", type=int, nargs='?')
+    args = parser.parse_args()
 
-print('\n')
-print("Extract_seqs is using {} as entry".format(args.entry))
-filename = cwd + "/" + str(args.entry) + "/" + str(args.entry) + ".nt.parse.merged.fa"
-seqlist = cwd + "/" + str(args.entry) + "/output/" + str(args.list)
-output = cwd + "/" + str(args.entry) + "/output/" + str(args.list) + ".cds.fa"
-print("Finding and translating this gene in the query db: {}".format(filename))
+    fasta_path = f"{args.entry}/{args.entry}.nt.parse.merged.fa"
+    list_path  = f"{args.entry}/output/{args.list}"
+    out_path   = f"{args.entry}/output/{args.list}.cds.fa"
 
-print(seqlist)
+    # 1) Read gene IDs
+    with open(list_path) as f:
+        genes = [line.strip() for line in f if line.strip()]
 
-with open(seqlist) as f:
-    for line2 in f:
-        line = line2.rstrip('\n') #Need to strip the line break
-        #print(line)
-        for seq_record in SeqIO.parse(filename, "fasta"):
-            #print(seq_record.id)
-            save_file = open(output, 'a+')
+    # 2) Index FASTA
+    seq_index = SeqIO.index(fasta_path, "fasta")
 
-            if line == seq_record.id:
+    # 3) Open output once and write matching records
+    with open(out_path, "w") as out_f:
+        for gid in genes:
+            if gid in seq_index:
+                record = seq_index[gid]
+                seq = record.seq
                 if args.aa_start > 0:
-                    save_file = open(output, 'a')
-                    save_file.write('>')
-                    save_file.write(seq_record.id)
-                    save_file.write('\n') #line break
-                    temp = str((seq_record.seq))
-                    save_file.write(temp[args.aa_start:args.aa_end])
-                    save_file.write('\n')
-                    print("Found entry seq! " + args.entry)
-                    print(seq_record.description)
-                    print(seq_record.seq())
-                    save_file.close()
-                    break
-                else:
-                    save_file = open(output, 'a')
-                    save_file.write('>')
-                    save_file.write(seq_record.id)
-                    save_file.write('\n')
-                    save_file.write(str((seq_record.seq)))
-                    save_file.write('\n')
-                    save_file.close()
-                    break
+                    subseq = seq[args.aa_start:args.aa_end]
+                    record = record[:0]  # drop existing seq
+                    record.seq = subseq
+                SeqIO.write(record, out_f, "fasta")
 
+if __name__ == "__main__":
+    main()

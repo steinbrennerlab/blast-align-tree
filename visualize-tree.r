@@ -67,6 +67,8 @@ option_list <- list(
         help="whether to include node labels"),
 	make_option(c("-k", "--bootstrap_boolean"), action="store", default=0, type="numeric", 
         help="whether to include bootstrap labels"),
+	make_option("--genomeLabel_boolean", action="store", default=0, type="numeric", 
+        help="whether to include genome labels"),
 	make_option(c("-j", "--tree_type"), action="store", default=1, type="numeric", 
         help="Specify a (1) plain tree, (2) heatmap (2), or (3) multiple sequence alignment")
 		)
@@ -224,11 +226,13 @@ tips <- fortify(tree)
 tips <- data.frame(tips$label,tips$y,tips$isTip)
 tips <- tips[order(tips[,3],tips[,2],decreasing=T),]
 
-#Writes the tip names to a csv file in the same order as the tree visualization
-for (i in 1:node_count) {
-write(as.matrix(tips)[,1][i],file=file_csv,sep=",",append=T)
-}
-#Using the output csv, this line calls python scripts to get the original nucleotide sequences from the parsed, merged, fasta file.  This output fa is in the same order as the tree
+# Write the tip names to a csv file in the same order as the tree visualization
+# Pull out the first column
+v <- as.character(as.matrix(tips)[,1])
+# Write all lines
+write(v, file = file_csv, sep = "\n")
+
+#Using the csv of gene names, extract_seq.py extracts original nucleotide sequences from the parsed, merged, fasta file.  The output fasta file is in the same order as the tree!
 system(paste("python scripts/extract_seq.py ",opt$entry," ",opt$write,".csv",sep=""))
 system(paste("python scripts/extract_seq_aa.py ",opt$entry," ",opt$write,".csv",sep=""))
 
@@ -240,7 +244,34 @@ dd3 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 p <- p %<+% dd3
 
   ## create a character vector to define the color schemes for each aes color factor
-standard_colors <- c("black","blue","darkgoldenrod","purple","orange","darkgreen","black","blue","purple","darkgreen","black","blue","orange","purple","darkgreen","cadetblue","deeppink","darkgoldenrod","brown4","olivedrab2","cyan","magenta","#008080","lavender","#bcf60c","#aaffc3","#ffd8b1","#fabebe","#fffac8","green")
+standard_colors <- c(
+  "black", "blue", "darkgoldenrod", "purple", "orange", "darkgreen",  # 1-6
+  "slategray4",    #  7
+  "steelblue4",    #  8
+  "sienna4",       #  9
+  "darkslateblue", # 10
+  "mediumslateblue",#11
+  "peru",          # 12
+  "darkolivegreen4",#13
+  "seagreen4",     # 14
+  "maroon4",       # 15
+  "midnightblue",  # 16
+  "darkorchid4",   # 17
+  "chocolate4",    # 18
+  "cadetblue4",    # 19
+  "rosybrown4",    # 20
+  "slateblue4",    # 21
+  "olivedrab4",    # 22
+  "darkcyan",      # 23
+  "tomato4",       # 24
+  "forestgreen",   # 25
+  "indianred4",    # 26
+  "paleturquoise4",# 27
+  "mediumpurple4", # 28
+  "lawngreen4",    # 29
+  "darkmagenta",   # 30
+  "gray35"         # 31
+)
 
   ## Add gene symbol labels to the tree using offsets specified in the options
 p <- p +
@@ -249,6 +280,13 @@ p <- p +
 	geom_tiplab(aes(label=symbol,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset) + 
 	#gene symbol names
 	scale_colour_manual(values=standard_colors)
+
+if (opt$genomeLabel_boolean > 0) {
+	p <- p +
+	geom_tiplab(aes(label=genome,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset+1) + 
+	#genome label names
+	scale_colour_manual(values=standard_colors)
+}
 
   ## Create a duplicate tree for heatmap and MSA trees below
 p2 <- p
