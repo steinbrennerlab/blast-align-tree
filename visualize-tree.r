@@ -84,8 +84,8 @@ tree_newick <- paste(opt$entry,"/","combinedtree.nwk", sep='')
 message(tree_newick)
 tree <- read.tree(tree_newick)
 
-#Takes in merged_coding file from blast_align_tree
-gene_species_list <- paste(opt$entry,"/","merged_coding.txt", sep='')
+#Takes in merged_genome_mapping file from blast_align_tree
+gene_species_list <- paste(opt$entry,"/","merged_genome_mapping.txt", sep='')
 message(gene_species_list)
 
 #define output filenames
