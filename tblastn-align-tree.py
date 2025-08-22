@@ -33,6 +33,8 @@ from typing import Iterable, List, Tuple, Optional
 # Utilities
 # -----------------------
 
+
+
 def check_tool(name: str):
     if shutil.which(name) is None:
         raise SystemExit(f"Required tool not found in PATH: {name}")
@@ -104,6 +106,32 @@ def prepend_header_line(fp: Path, header: str):
         return
     content = fp.read_text(encoding="utf-8", errors="ignore")
     fp.write_text(header + content, encoding="utf-8")
+
+from datetime import datetime
+from pathlib import Path
+import shutil
+
+def archive_run(entry_root: Path, timestamp: str) -> Path:
+    """
+    Move all current contents of ./ENTRY into ./ENTRY/runs/<timestamp>/,
+    excluding the 'runs' folder itself. No symlinks are created.
+    Returns the final run directory path.
+    """
+    runs_root = entry_root / "runs"
+    run_dir = runs_root / timestamp
+    ensure_dir(run_dir)
+
+    for item in list(entry_root.iterdir()):
+        if item.name == "runs":
+            continue
+        target = run_dir / item.name
+        ensure_dir(target.parent)
+        shutil.move(str(item), str(target))
+
+    print(f"[info] archived to {run_dir}")
+    return run_dir
+
+
 
 # -----------------------
 # Core pipeline steps
@@ -229,6 +257,7 @@ def main():
 
     # Create directories
     entry_dir = workdir / entry
+    entry_root = workdir / entry
     ensure_dir(entry_dir / "output")
     print(f"Making directory based on first query: {entry}")
     print(f"First database to search, entrydb: {entrydb}")
@@ -322,6 +351,10 @@ def main():
     
     # Step 8: run visualize-tree.r
     visualize_tree(entry, args.queries, workdir)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    archive_run(entry_root, timestamp)
+
 
 
 if __name__ == "__main__":
