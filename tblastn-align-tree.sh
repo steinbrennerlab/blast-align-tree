@@ -54,7 +54,6 @@ done
 echo dbs length is "${#DATABASE[@]}"
 
 
-
 #make a subdirectory with the gene name $ENTRY for storing output files
 mkdir $PWD/$ENTRY
 mkdir $PWD/$ENTRY/output
