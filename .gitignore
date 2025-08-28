@@ -19,7 +19,7 @@
 !/psiblast-align-tree.sh
 !/tblastn-align-tree.sh
 !/blastp-align-tree.sh
-!/tblastn-align-tree.py
+!/blast-align-tree.py
 !/bat-flowchart.pptx
 !/gene_symbols.txt
 !/flowchart.png

@@ -268,10 +268,13 @@ standard_colors <- c(
   "indianred4",    # 26
   "paleturquoise4",# 27
   "mediumpurple4", # 28
-  "lawngreen4",    # 29
   "darkmagenta",   # 30
   "gray35"         # 31
 )
+standard_colors_generator <- function(n) {
+  rep(standard_colors, length.out = n)
+}
+standard_colors <- standard_colors_generator(100)
 
   ## Add gene symbol labels to the tree using offsets specified in the options
 p <- p +
