@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
 """
-Python rewrite of tblastn-align-tree.sh
+Python rewrite of tblastn-align-tree.sh with all helper scripts inlined as functions.
 
 - Orchestrates BLAST+ CLI tools via subprocess
 - Replaces awk/xargs/sed with native Python
+- **All previous helper scripts (`extract_translate.py`, `translate_db.py`, `pull_id_fasta*.py`, `remove_stop.py`, `add_translations.py`) are now built-in**
 - Parallelizes (query, database) jobs
-- Requires: tblastn, blastdbcmd, clustalo, FastTree, Python helper scripts in ./scripts
+- Requires: tblastn, blastp, blastdbcmd, clustalo, FastTree, Biopython
 
 Usage example:
-python tblastn_align_tree.py \
-  -q ENTRY Q2 \
-  -qdbs ENTRYDB.fa Q2DB.fa \
-  -n 50 50 \
-  -hdr '>' 'gene=' \
-  -dbs Vung469.cds.fa TAIR10cds.fa \
-  -add OUTGROUP1 \
-  -add_db OUTGROUP_DB.fa \
-  -aa 10 200
+python blast_align_tree.py   -q ENTRY Q2   -qdbs ENTRYDB.fa Q2DB.fa   -n 50 50   -hdr '>' 'gene='   -dbs Vung469.cds.fa TAIR10cds.fa   -add OUTGROUP1   -add_db OUTGROUP_DB.fa   -aa 10 200
 """
-
 from __future__ import annotations
 import argparse
 import concurrent.futures as cf
@@ -29,11 +21,14 @@ import subprocess
 import sys
 from typing import Iterable, List, Tuple, Optional
 
+# Biopython
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.Seq import translate
+
 # -----------------------
 # Utilities
 # -----------------------
-
-
 
 def check_tool(name: str):
     if shutil.which(name) is None:
@@ -80,22 +75,17 @@ def dedup_fasta_by_id(in_path: Path, out_path: Path):
     """Deduplicate FASTA entries by the header token up to first whitespace."""
     ensure_dir(out_path.parent)
     seen = set()
-    with in_path.open("r", encoding="utf-8", errors="ignore") as fin, \
-         out_path.open("w", encoding="utf-8") as fout:
+    with in_path.open("r", encoding="utf-8", errors="ignore") as fin,          out_path.open("w", encoding="utf-8") as fout:
         write = False
-        cur_header = None
         for line in fin:
             if line.startswith(">"):
-                # Header token: everything until whitespace
-                tok = line.strip().split()[0]
+                tok = line.strip().split()[0]  # header token
                 if tok not in seen:
                     seen.add(tok)
                     write = True
-                    cur_header = tok
                     fout.write(line)
                 else:
                     write = False
-                    cur_header = None
             else:
                 if write:
                     fout.write(line)
@@ -108,8 +98,6 @@ def prepend_header_line(fp: Path, header: str):
     fp.write_text(header + content, encoding="utf-8")
 
 from datetime import datetime
-from pathlib import Path
-import shutil
 
 def archive_run(entry_root: Path, timestamp: str) -> Path:
     """
@@ -138,6 +126,158 @@ def bt_suffix(blast_type: str) -> str:
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
     return workdir / entry / f"{q}.{db}.seq.{bt_suffix(blast_type)}"
 
+# -----------------------
+# Inlined helpers (formerly separate scripts)
+# -----------------------
+
+def _extract_translate_tblastn(genomes_dir: Path, entry_dir: Path, q: str, qdb: str, aa_slice: Optional[List[int]]):
+    """
+    Former: extract_translate.py
+    - Find nucleotide FASTA record with id==q in genomes/<qdb>
+    - Translate to AA (optionally slice aa_start:aa_end)
+    - Write to <entry>/<q>.seq.fa
+    """
+    src = genomes_dir / qdb
+    dest = entry_dir / f"{q}.seq.fa"
+    ensure_dir(dest.parent)
+
+    aa_start = None
+    aa_end = None
+    if aa_slice and len(aa_slice) >= 2:
+        aa_start, aa_end = aa_slice[0], aa_slice[1]
+
+    found = False
+    with open(dest, "w", encoding="utf-8") as out:
+        for rec in SeqIO.parse(str(src), "fasta"):
+            if rec.id == q:
+                aa = str(translate(rec.seq))
+                if aa_start is not None:
+                    aa = aa[aa_start:aa_end]
+                out.write(f">{rec.id}\n{aa}\n")
+                found = True
+                break
+
+    if not found:
+        raise SystemExit(f"Query id '{q}' not found in nucleotide FASTA '{src}' for translation")
+
+def _extract_copy_blastp(genomes_dir: Path, entry_dir: Path, q: str, qdb: str):
+    """
+    blastp mode: copy protein sequence with header==q from genomes/<qdb> into <entry>/<q>.seq.fa
+    """
+    src = genomes_dir / qdb
+    dest = entry_dir / f"{q}.seq.fa"
+    ensure_dir(dest.parent)
+
+    found = False
+    with open(src, "r", encoding="utf-8", errors="ignore") as fin,          open(dest, "w", encoding="utf-8") as fout:
+        write = False
+        for line in fin:
+            if line.startswith(">"):
+                header_tok = line.strip()[1:].split()[0]
+                write = (header_tok == q)
+                if write:
+                    fout.write(f">{q}\n")
+                    found = True
+            else:
+                if write:
+                    fout.write(line)
+    if not found:
+        raise SystemExit(f"Query id '{q}' not found in protein FASTA '{src}'")
+
+def _remove_stop_codons(in_fa: Path, out_fa: Path):
+    """
+    Former: remove_stop.py
+    Remove TAG/TGA/TAA anywhere in-frame across the sequence.
+    """
+    stops = {"TAG", "TGA", "TAA"}
+    my_records = []
+    for record in SeqIO.parse(str(in_fa), "fasta"):
+        seq_list = list(str(record.seq))
+        i = 0
+        while i + 2 < len(seq_list):
+            codon = "".join(seq_list[i:i+3]).upper()
+            if codon in stops:
+                del seq_list[i:i+3]
+                # do not advance i; next codon now at same index
+            else:
+                i += 3
+        record.seq = Seq("".join(seq_list))
+        my_records.append(record)
+    ensure_dir(out_fa.parent)
+    SeqIO.write(my_records, str(out_fa), "fasta")
+
+def _translate_fasta(in_fa: Path, out_fa: Path):
+    """
+    Former: translate_db.py
+    For each nucleotide record in in_fa, write translated AA with the original description as header.
+    """
+    ensure_dir(out_fa.parent)
+    with open(out_fa, "w", encoding="utf-8") as out:
+        for rec in SeqIO.parse(str(in_fa), "fasta"):
+            out.write(">" + rec.description + "\n")
+            out.write(str(translate(rec.seq)) + "\n")
+
+def _parse_header_token(description: str, headerword: str, fallback_id: str) -> str:
+    """
+    Former: pull_id_fasta*.py logic
+    If headerword == 'id' → return fallback_id (record.id).
+    Else: find substring after the first occurrence of headerword and take until next space.
+    If headerword not found, return fallback_id.
+    """
+    if headerword == "id":
+        return fallback_id
+    if headerword not in description:
+        return fallback_id
+    # Split on the headerword and take the part immediately following, up to first space
+    try:
+        part = description.split(headerword, 1)[1]
+        token = part.split(" ", 1)[0]
+        return token
+    except Exception:
+        return fallback_id
+
+def _parse_fasta_headers(in_fa: Path, out_fa: Path, headerword: str):
+    """
+    Write a new FASTA where each header is the parsed token.
+    """
+    ensure_dir(out_fa.parent)
+    with open(out_fa, "w", encoding="utf-8") as out:
+        for rec in SeqIO.parse(str(in_fa), "fasta"):
+            token = _parse_header_token(rec.description, headerword, rec.id)
+            out.write(f">{token}\n{str(rec.seq)}\n")
+
+def _coding_table(in_fa: Path, out_txt: Path, headerword: str, db_name: str):
+    """
+    Create <parsed_token>\t<db_name> lines for each record.
+    """
+    ensure_dir(out_txt.parent)
+    with open(out_txt, "a", encoding="utf-8") as out:
+        for rec in SeqIO.parse(str(in_fa), "fasta"):
+            token = _parse_header_token(rec.description, headerword, rec.id)
+            out.write(f"{token}\t{db_name}\n")
+
+def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id: str):
+    """
+    Former: add_translations.py
+    Append translation of seq_id from genomes/<db> to:
+      - <entry>/<entry>.parse.merged.fa
+      - <entry>/merged_coding.txt
+    """
+    src = genomes_dir / db
+    out_fa = entry_dir / f"{entry_dir.name}.parse.merged.fa"
+    out_txt = entry_dir / "merged_coding.txt"
+    ensure_dir(out_fa.parent)
+    ensure_dir(out_txt.parent)
+
+    for rec in SeqIO.parse(str(src), "fasta"):
+        if rec.id == seq_id:
+            with open(out_fa, "a", encoding="utf-8") as fa:
+                fa.write(f">{rec.id}\n{str(translate(rec.seq))}\n")
+            with open(out_txt, "a", encoding="utf-8") as txt:
+                txt.write(f"\n{rec.id}\t{db}")
+            print(f"[add] added {seq_id} from {db}")
+            return
+    raise SystemExit(f"Sequence id '{seq_id}' not found in {src}")
 
 # -----------------------
 # Core pipeline steps
@@ -148,38 +288,20 @@ def extract_and_translate(
     q: str,
     qdb: str,
     slice_args: Optional[List[str]],
-    scripts_dir: Path,
     workdir: Path,
     blast_type: str
 ):
-    q_out = workdir / entry / f"{q}.seq.fa"
+    entry_dir = workdir / entry
+    genomes_dir = workdir / "genomes"
+    aa_slice = None
+    if slice_args and len(slice_args) >= 2:
+        # Expecting AA start end
+        aa_slice = [int(slice_args[0]), int(slice_args[1])]
+
     if blast_type == "tblastn":
-        # Renamed helper script per user instruction
-        cmd = ["python", str(scripts_dir / "extract_translate.py"), entry, q, qdb]
-        if slice_args and len(slice_args) >= 2:
-            cmd += slice_args[:2]
-        run(cmd, cwd=workdir)
+        _extract_translate_tblastn(genomes_dir, entry_dir, q, qdb, aa_slice)
     else:
-        # blastp: copy the protein sequence with header == q from qdb into q_out
-        # Minimal pure-Python extractor (no external deps)
-        ensure_dir(q_out.parent)
-        found = False
-        qdb_path = workdir / "genomes" / qdb  # FIX: look in genomes subfolder
-        with open(qdb_path, "r", encoding="utf-8", errors="ignore") as fin, \
-             open(q_out, "w", encoding="utf-8") as fout:
-            write = False
-            for line in fin:
-                if line.startswith(">"):
-                    header_tok = line.strip()[1:].split()[0]
-                    write = (header_tok == q)
-                    if write:
-                        fout.write(f">{q}\n")
-                        found = True
-                else:
-                    if write:
-                        fout.write(line)
-        if not found:
-            raise SystemExit(f"Query id '{q}' not found in protein FASTA '{qdb_path}'")
+        _extract_copy_blastp(genomes_dir, entry_dir, q, qdb)
 
 def blast_and_post(entry: str, q: str, db: str, max_targets: str, workdir: Path, blast_type: str) -> Tuple[str, str, str]:
     """
@@ -199,56 +321,60 @@ def blast_and_post(entry: str, q: str, db: str, max_targets: str, workdir: Path,
         "-max_target_seqs", str(max_targets), "-max_hsps", "1",
         "-outfmt", "6 sseqid", "-out", str(out_base)
     ])
-    # full report
+    # full report (pairwise)
     full = out_base.with_suffix(out_base.suffix + ".full")
     run([
         "tblastn" if blast_type == "tblastn" else "blastp",
         "-query", str(q_fa), "-db", str(db_path),
         "-max_hsps", "1", "-outfmt", "1", "-out", str(full)
     ])
-    prepend_header_line(full, "hit query_id\tsubject_id\tpct_identity\taln_length\tn_of_mismatches\tgap_openings\tq_start q_end\ts_start   s_end\te_value bit_score\n")
+    prepend_header_line(full, "hit query_id	subject_id	pct_identity	aln_length	n_of_mismatches	gap_openings	q_start q_end	s_start   s_end	e_value bit_score\n")
 
     # Fetch sequences from the BLAST DB for the hit list
     if blast_type == "tblastn":
         stop_fa = Path(str(out_base) + ".blastdb.stop.fa")
         nt_fa   = Path(str(out_base) + ".blastdb.fa")
         run(["blastdbcmd", "-db", str(db_path), "-entry_batch", str(out_base), "-out", str(stop_fa)])
-        run(["python", str(workdir / "scripts" / "remove_stop.py"), str(stop_fa), str(nt_fa)])
+        _remove_stop_codons(stop_fa, nt_fa)
         return str(out_base), str(full), str(nt_fa)
     else:
         prot_fa = Path(str(out_base) + ".blastdb.fa")
         run(["blastdbcmd", "-db", str(db_path), "-entry_batch", str(out_base), "-out", str(prot_fa)])
         return str(out_base), str(full), str(prot_fa)
 
-
 def translate_and_parse_headers(
     entry: str,
     q: str,
     db: str,
     header_rule: str,
-    scripts_dir: Path,
     workdir: Path,
     blast_type: str):
     bt = bt_suffix(blast_type)
+    entry_dir = workdir / entry
 
     if blast_type == "tblastn":
         # translate_db produces *.seq.tblastn.blastdb.translate.fa
-        run(["python", str(scripts_dir / "translate_db.py"), entry, q, db], cwd=workdir)
+        in_nt = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa"
+        out_aa = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa"
+        _translate_fasta(in_nt, out_aa)
+
         # pull_id_fasta for nt and translated
-        run(["python", str(scripts_dir / "pull_id_fasta.py"), entry, q, db, header_rule, f".seq.{bt}.blastdb.fa"], cwd=workdir)
-        run(["python", str(scripts_dir / "pull_id_fasta.py"), entry, q, db, header_rule, f".seq.{bt}.blastdb.translate.fa"], cwd=workdir)
+        _parse_fasta_headers(in_nt, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule)
+        _parse_fasta_headers(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.parse.fa", header_rule)
+
         # coding table on translated AA
-        run(["python", str(scripts_dir / "pull_id_fasta_coding.py"), entry, q, db, header_rule, f".seq.{bt}.blastdb.translate.fa"], cwd=workdir)
+        _coding_table(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.coding.txt", header_rule, db)
     else:
         # blastp: only AA present → only pull/parse once from *.blastdb.fa
-        run(["python", str(scripts_dir / "pull_id_fasta.py"), entry, q, db, header_rule, f".seq.{bt}.blastdb.fa"], cwd=workdir)
-        run(["python", str(scripts_dir / "pull_id_fasta_coding.py"), entry, q, db, header_rule, f".seq.{bt}.blastdb.fa"], cwd=workdir)
-        
+        in_aa = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa"
+        _parse_fasta_headers(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule)
+        _coding_table(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db)
 
-
-def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], scripts_dir: Path, workdir: Path):
+def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path):
+    genomes_dir = workdir / "genomes"
+    entry_dir = workdir / entry
     for db, seq in zip(add_dbs, add_seqs):
-        run(["python", str(scripts_dir / "add_translations.py"), entry, db, seq], cwd=workdir)
+        _add_translation_from_db(genomes_dir, entry_dir, db, seq)
 
 def clustalo_and_fasttree(entry: str, workdir: Path):
     in_fa  = workdir / entry / f"{entry}.parse.merged.fa"
@@ -258,7 +384,7 @@ def clustalo_and_fasttree(entry: str, workdir: Path):
     print("Running FastTree")
     run(["FastTree", "-out", str(tree_out), str(aln_fa)])
     shutil.copyfile(tree_out, workdir / entry / "combinedtree.nwk")
-    
+
 def visualize_tree(entry: str, queries: List[str], workdir: Path):
     """
     Run visualize-tree.r on the combinedtree.nwk 
@@ -277,13 +403,12 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
     ]
     run(cmd, cwd=workdir)
 
-
 # -----------------------
 # Main
 # -----------------------
 
 def main():
-    ap = argparse.ArgumentParser(description="Python rewrite of tblastn-align-tree.sh")
+    ap = argparse.ArgumentParser(description="Python rewrite of tblastn-align-tree.sh (single-file, helpers inlined)")
     ap.add_argument("-q", "--queries", nargs="+", required=True, help="fasta ID for query sequences")
     ap.add_argument("-qdbs", "--query_databases", nargs="+", required=True, help="fasta files containing the queries")
     ap.add_argument("-n", "--seqs", nargs="+", required=True, help="-max_target_seqs per search database (align with -dbs)")
@@ -303,7 +428,6 @@ def main():
     args = ap.parse_args()
     blast_type = args.blast_type
 
-
     # Sanity checks
     if len(args.query_databases) != len(args.queries):
         raise SystemExit("queries and query_databases lengths must match")
@@ -320,31 +444,25 @@ def main():
     for tool in ["blastdbcmd", "clustalo", "FastTree"]:
         check_tool(tool)
 
-
     workdir = Path(args.workdir).resolve()
-    scripts_dir = workdir / "scripts"
-
     entry = args.queries[0]
-    entrydb = args.query_databases[0]  # kept for parity with bash; extract_translate uses both
+    entrydb = args.query_databases[0]  # kept for parity with bash; extract uses both
 
     # Create directories
     entry_dir = workdir / entry
-    entry_root = workdir / entry
     ensure_dir(entry_dir / "output")
     print(f"Making directory based on first query: {entry}")
     print(f"First database to search, entrydb: {entrydb}")
     print("All queries:", *args.queries, sep="\n  ")
     print("All source databases for queries:", *args.query_databases, sep="\n  ")
     print("-dbs, Queries will be BLASTed against all Databases:", *args.database, sep="\n  ")
-    print("Number of subject seqs to pull from tblastn search:", *args.seqs, sep="\n  ")
+    print("Number of subject seqs to pull from tblastn/blastp search:", *args.seqs, sep="\n  ")
     print(f"dbs length is {len(args.database)}")
     print(f"Blast type: {blast_type} → searching {'nucleotide (tblastn)' if blast_type=='tblastn' else 'protein (blastp)'} databases")
 
-
     # Step 1: extract and translate each query (optionally AA slice)
     for q, qdb in zip(args.queries, args.query_databases):
-        extract_and_translate(entry, q, qdb, args.slice if args.slice else None, scripts_dir, workdir, blast_type)
-
+        extract_and_translate(entry, q, qdb, args.slice if args.slice else None, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
     jobs: List[Tuple[str, str, str, str]] = []  # (q, db, n, header_rule)
@@ -355,15 +473,14 @@ def main():
     def _one(job: Tuple[str, str, str, str]):
         q, db, n, hdr = job
         out_base, full, fetched_fa = blast_and_post(entry, q, db, n, workdir, blast_type)
-        translate_and_parse_headers(entry, q, db, hdr, scripts_dir, workdir, blast_type)
+        translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type)
         return job
-
 
     with cf.ThreadPoolExecutor(max_workers=args.threads) as ex:
         list(ex.map(_one, jobs))
 
     # Step 3: combine coding txt → merged_genome_mapping.txt and prepend header
-    coding_txts = sorted(entry_dir.glob("*.txt"))  # created by pull_id_fasta_coding.py
+    coding_txts = sorted(entry_dir.glob("*.coding.txt"))
     merged_genome_mapping = entry_dir / "merged_genome_mapping.txt"
     merge_files(coding_txts, merged_genome_mapping)
     prepend_header_line(merged_genome_mapping, "taxa\tgenome\n")
@@ -412,7 +529,6 @@ def main():
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
         dedup_fasta_by_id(aa_parse_merged, parse_merged)
 
-
     # Step 5: per-database merges → orthofinder-input copies
     orthof = entry_dir / "output" / "orthofinder-input"
     ensure_dir(orthof)
@@ -429,10 +545,9 @@ def main():
         dedup_fasta_by_id(db_merge, db_rmdup)
         shutil.copyfile(db_rmdup, orthof / db)
 
-
     # Step 6: optional add translations
     if args.add_seqs:
-        optional_add_translations(entry, args.add_dbs, args.add_seqs, scripts_dir, workdir)
+        optional_add_translations(entry, args.add_dbs, args.add_seqs, workdir)
 
     # Step 7: clustalo and FastTree
     clustalo_and_fasttree(entry, workdir)
@@ -441,15 +556,14 @@ def main():
     print(f"Key outputs under: {entry_dir}")
     print(f"  Alignment: {entry_dir / (entry + '.parse.merged.clustal.fa')}")
     print(f"  Tree:      {entry_dir / 'combinedtree.nwk'}")
-    print(f"  Mapping:    {merged_genome_mapping}")
-    
+    print(f"  Mapping:   {merged_genome_mapping}")
+
     # Step 8: run visualize-tree.r
     visualize_tree(entry, args.queries, workdir)
-    
+
+    # Step 9: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    archive_run(entry_root, timestamp)
-
-
+    archive_run(entry_dir, timestamp)
 
 if __name__ == "__main__":
     main()
