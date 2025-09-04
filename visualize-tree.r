@@ -70,30 +70,96 @@ option_list <- list(
 	make_option("--genomeLabel_boolean", action="store", default=0, type="numeric", 
         help="whether to include genome labels"),
 	make_option(c("-j", "--tree_type"), action="store", default=1, type="numeric", 
-        help="Specify a (1) plain tree, (2) heatmap (2), or (3) multiple sequence alignment")
-		)
+        help="Specify a (1) plain tree, (2) heatmap (2), or (3) multiple sequence alignment"),
+	optparse::make_option(
+    c("--features"),
+    type = "character",
+    default = NULL,
+    help = "Optional path to features.txt. If omitted, will try <entry>/output/features.txt. If missing/unreadable, feature overlay is skipped."),
+	make_option(
+    c("--subdir"),
+    type = "character",
+    default = NULL,
+    help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped.")
+	)
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
+
+# ---- path resolution (do NOT mutate opt$entry/opt$write) ----
+append_rel <- function(base, subdir) {
+  if (is.null(subdir) || !nzchar(subdir)) return(base)
+  file.path(base, gsub("^[/\\\\]+", "", subdir))
+}
+
+ENTRY_DIR <- append_rel(opt$entry, opt$subdir)
+WRITE_DIR <- append_rel(opt$subdir, opt$write)
+message(WRITE_DIR)
+#dir.create(WRITE_DIR, recursive = TRUE, showWarnings = FALSE)
+
+message(sprintf("ENTRY_DIR=%s", ENTRY_DIR))
+message(sprintf("WRITE_DIR=%s", WRITE_DIR))
+
+###
+# Check for presence of features.txt in the output folder
+###
+
+`%||%` <- function(a, b) if (!is.null(a) && nzchar(a)) a else b
+
+feature_file_default <- file.path(ENTRY_DIR, "output", "features.txt")
+feature_file <- opt$features %||% feature_file_default
+
+read_features_safe <- function(path) {
+  if (!is.character(path) || !nzchar(path) || !file.exists(path)) return(NULL)
+  if (isTRUE(file.info(path)$size == 0)) return(NULL)
+  tryCatch(
+    utils::read.delim(
+      path,
+      header = TRUE,
+      sep = "\t",
+      stringsAsFactors = FALSE,
+      check.names = FALSE,
+      quote = "",
+      comment.char = "",
+      strip.white = TRUE
+    ),
+    error = function(e) NULL
+  )
+}
+
+required_cols_present <- function(df) {
+  req <- c("label", "aa_start", "aa_end", "feature")
+  !is.null(df) && all(req %in% names(df))
+}
+
+features_df <- read_features_safe(feature_file)
+has_features <- required_cols_present(features_df)
+if (!has_features) {
+  message(sprintf("No usable features file found at '%s'. Skipping feature overlay.", feature_file))
+}
+
+###
+# End feature file check
+###
 
 #setWD
 working_dir <- getwd()
 setwd(working_dir)
 
 #Takes in the output from FastTree fed by blast_align_tree bash script
-tree_newick <- paste(opt$entry,"/","combinedtree.nwk", sep='')
+tree_newick <- paste(ENTRY_DIR,"/","combinedtree.nwk", sep='')
 message(tree_newick)
 tree <- read.tree(tree_newick)
 
 #Takes in merged_genome_mapping file from blast_align_tree
-gene_species_list <- paste(opt$entry,"/","merged_genome_mapping.txt", sep='')
+gene_species_list <- paste(ENTRY_DIR,"/","merged_genome_mapping.txt", sep='')
 message(gene_species_list)
 
 #define output filenames
-file <- paste(opt$entry,"/output/",opt$write,".pdf", sep='')
+file <- paste(ENTRY_DIR,"/output/",opt$write,".pdf", sep='')
 message(file)
-file_csv <- paste(opt$entry,"/output/",opt$write,".csv", sep='')
+file_csv <- paste(ENTRY_DIR,"/output/",opt$write,".csv", sep='')
 message(file_csv)
-file_nwk <- paste(opt$entry,"/output/",opt$write,".nwk", sep='')
+file_nwk <- paste(ENTRY_DIR,"/output/",opt$write,".nwk", sep='')
 message(file_nwk)
 
 
@@ -140,18 +206,10 @@ message(size)
 print("The node label font size is")
 message(size2)
 
-###OPTIONAL: adds hmm coding to ggtree object p
-###OPTIONAL: takes hmm_coding and adds to a separate dataframe dd2
-#dir3 <- paste(getwd(),"/",opt$entry,"/","hmm_coding.txt", sep='')
-#message(dir3)
-#dd2 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F) #optional, reads a second merged file!
-#p <- p %<+% dd2 + geom_tippoint(aes(size=size2/2,color=type,shape=type)) + scale_size_identity() #weird, you need scale_size_identity! https://groups.google.com/forum/#!topic/bioc-ggtree/XHaq9Sk3b00
-
 
 # Read all datasets in the /datasets folder
-
 ## Function to read datasets from a folder
-print("new function")
+
 read_datasets <- function(folder_path) {
   print("read datasets function")
   dataset_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
@@ -209,14 +267,9 @@ add_datasets_to_tree <- function(p, datasets, base_offset) {
 
 
 xmax <- max(p$data$x)
-  # Read datasets
-  datasets <- read_datasets("datasets/")
-  
-  # Add datasets to the tree
-  p <- add_datasets_to_tree(p, datasets, base_offset = 0)
-  
 
-opt$width <- max(p$data$x) + total_offset
+
+
 
 ###########################
 
@@ -233,8 +286,8 @@ v <- as.character(as.matrix(tips)[,1])
 write(v, file = file_csv, sep = "\n")
 
 #Using the csv of gene names, extract_seq.py extracts original nucleotide sequences from the parsed, merged, fasta file.  The output fasta file is in the same order as the tree!
-system(paste("python scripts/extract_seq.py ",opt$entry," ",opt$write,".csv",sep=""))
-system(paste("python scripts/extract_seq_aa.py ",opt$entry," ",opt$write,".csv",sep=""))
+system(paste("python scripts/extract_seq.py ",ENTRY_DIR," ",opt$entry," ",opt$write,".csv",sep=""))
+system(paste("python scripts/extract_seq_aa.py ",ENTRY_DIR," ",opt$entry," ",opt$write,".csv",sep=""))
 
 # Read gene symbols to display next to annotated genes
   ## Read gene symbols file from root directory
@@ -291,8 +344,7 @@ if (opt$genomeLabel_boolean > 0) {
 	scale_colour_manual(values=standard_colors)
 }
 
-  ## Create a duplicate tree for heatmap and MSA trees below
-p2 <- p
+
 
 
 # If option -l is specified, include node numbering
@@ -313,12 +365,25 @@ if (opt$bootstrap_boolean > 0) {
 	p <- p + geom_text(data=d, aes(label=label), size=size, nudge_x=opt$bootstrap_offset)  #bootstraps
 }
 
+  # Read datasets
+datasets <- read_datasets("datasets/")
+
+  ## Create a duplicate tree for heatmap and MSA trees below -- it will not have datasets
+p2 <- p
+
+  # Add datasets to the tree
+  p <- add_datasets_to_tree(p, datasets, base_offset = 0)
+  
+
+
+opt$width <- max(p$data$x) + total_offset
+
 #Creates a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
-aa <- paste(opt$entry,"/output/",opt$write,".csv.aa.fa", sep='')
-msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
-msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
+aa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.fa", sep='')
+msa_pre <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
+msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
 
 #trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the MSA visualization
 system(paste("trimAl -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
@@ -351,11 +416,178 @@ dev.off()
 #gheatmap(p2,counts_file, offset = opt$heatmap_offset, width=opt$heatmap_width+3, font.size=size, colnames_angle=-20, hjust=0, color="black") + #scale_fill_gradient2(low=low_color,high=high_color,mid="white",limits=c(lower,upper)) 
 #dev.off()
 
+p_msa<-msaplot(p2,msa,offset=opt$heatmap_offset,color=msa_colors,bg_line=FALSE,) + guides(fill = "none")
+
+if (has_features) {
+
+# --- Add feature rectangles over the existing MSA (drop-in) -------------------
+# Set your features file path (TSV/whitespace-delimited with columns:
+# label, aa_start, aa_end, feature)
+feature_file <- file.path(ENTRY_DIR, "output", "features.txt")
+
+
+# 0) Read features
+feat <- utils::read.delim(feature_file, header = TRUE, sep = "", stringsAsFactors = FALSE, check.names = FALSE)
+stopifnot(all(c("label","aa_start","aa_end","feature") %in% names(feat)))
+feat$aa_start <- as.integer(feat$aa_start)
+feat$aa_end   <- as.integer(feat$aa_end)
+feat <- feat[!is.na(feat$label) & !is.na(feat$aa_start) & !is.na(feat$aa_end) & feat$aa_end >= feat$aa_start, , drop = FALSE]
+
+# 1) Extract alignment rectangles from p_msa (works for rect/tile/raster)
+pb <- ggplot2::ggplot_build(p_msa)
+
+.normalize_rects <- function(d) {
+  if (!("PANEL" %in% names(d))) d$PANEL <- 1L
+  if (all(c("xmin","xmax","ymin","ymax") %in% names(d))) {
+    return(d[, c("xmin","xmax","ymin","ymax","PANEL"), drop = FALSE])
+  }
+  if (all(c("x","y","width","height") %in% names(d))) {
+    return(data.frame(
+      xmin  = d$x - d$width/2,
+      xmax  = d$x + d$width/2,
+      ymin  = d$y - d$height/2,
+      ymax  = d$y + d$height/2,
+      PANEL = d$PANEL
+    ))
+  }
+  if (all(c("x","y") %in% names(d))) {
+    ux <- sort(unique(d$x)); uy <- sort(unique(d$y))
+    wx <- if (length(ux) > 1) min(diff(ux)) else 1
+    hy <- if (length(uy) > 1) min(diff(uy)) else 1
+    return(data.frame(
+      xmin  = d$x - wx/2,
+      xmax  = d$x + wx/2,
+      ymin  = d$y - hy/2,
+      ymax  = d$y + hy/2,
+      PANEL = d$PANEL
+    ))
+  }
+  NULL
+}
+
+rect_list <- Filter(Negate(is.null), lapply(pb$data, .normalize_rects))
+if (length(rect_list) == 0) stop("No rectangular MSA layer found in p_msa.")
+
+# Choose the densest rectangular layer
+msa_rect <- rect_list[[ which.max(vapply(rect_list, nrow, integer(1))) ]]
+
+# 2) Derive per-column x-bounds from the drawn grid (no matrix/list columns)
+col_center <- (msa_rect$xmin + msa_rect$xmax) / 2
+# Round to collapse float jitter; match centers to 1..N indices
+u_centers  <- sort(unique(round(col_center, 6)))
+col_id     <- match(round(col_center, 6), u_centers)  # 1..N columns
+
+xleft_by_col  <- tapply(msa_rect$xmin, col_id, min, na.rm = TRUE)
+xright_by_col <- tapply(msa_rect$xmax, col_id, max, na.rm = TRUE)
+
+col_edges <- data.frame(
+  aa_col = seq_along(u_centers),
+  xleft  = as.numeric(xleft_by_col),
+  xright = as.numeric(xright_by_col)
+)
+
+# 3) Compute row height from drawn grid
+row_h <- stats::median(msa_rect$ymax - msa_rect$ymin, na.rm = TRUE)
+
+# 4) Map tip labels -> y positions from the embedded tree data
+tip_df <- p_msa$data
+if ("isTip" %in% names(tip_df)) {
+  tip_y <- tip_df[tip_df$isTip %in% TRUE & !is.na(tip_df$label), c("label","y")]
+} else {
+  tip_y <- tip_df[!is.na(tip_df$label), c("label","y")]
+  tip_y <- tip_y[!duplicated(tip_y$label), , drop = FALSE]
+}
+
+# 5) Build overlay rectangles by joining features to y and to column edges
+feat_pos <- merge(feat, tip_y, by = "label", all.x = TRUE)
+
+feat_pos <- merge(
+  feat_pos,
+  setNames(col_edges, c("aa_start","xleft",".z1")),
+  by = "aa_start", all.x = TRUE
+)
+feat_pos <- merge(
+  feat_pos,
+  setNames(col_edges, c("aa_end",".z2","xright")),
+  by = "aa_end", all.x = TRUE
+)
+
+# Keep only placeable rows
+feat_pos <- feat_pos[!is.na(feat_pos$xleft) & !is.na(feat_pos$xright) & !is.na(feat_pos$y), , drop = FALSE]
+
+# y extents match each tip's band
+feat_pos$ymin <- feat_pos$y - row_h/2
+feat_pos$ymax <- feat_pos$y + row_h/2
+
+# 6) Draw overlay rectangles (fill by 'feature')
+# Okabe–Ito palette (colorblind-friendly), repeats as needed
+.okabe_ito <- c("#000000","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7")
+.feature_levels <- unique(feat_pos$feature)
+.fill_vals <- setNames(rep(.okabe_ito, length.out = length(.feature_levels)), .feature_levels)
+
+# --- Overlay features: rectangles for long spans, dots for short spans --------
+# If you already added ggnewscale::new_scale_fill() earlier, keep that one and remove this next line.
+if (!requireNamespace("ggnewscale", quietly = TRUE)) utils::install.packages("ggnewscale")
+p_msa <- p_msa + ggnewscale::new_scale_fill()
+
+# Compute feature length (inclusive) and split
+feat_pos$len_aa <- feat_pos$aa_end - feat_pos$aa_start + 1L
+long_pos  <- feat_pos[feat_pos$len_aa >= 10, , drop = FALSE]
+short_pos <- feat_pos[feat_pos$len_aa <  10, , drop = FALSE]
+
+# Midpoint coordinates for short features
+if (nrow(short_pos) > 0) {
+  short_pos$x_mid <- (short_pos$xleft + short_pos$xright)/2
+  # center of each MSA row band is at 'y'
+  short_pos$y_mid <- short_pos$y
+}
+
+# Color palette (Okabe–Ito), repeated across all feature levels
+.okabe_ito <- c("#E69F00","#56B4E9","#009E73",
+                "#F0E442","#0072B2","#D55E00","#CC79A7")
+.feature_levels <- unique(feat_pos$feature)
+.fill_vals <- setNames(rep(.okabe_ito, length.out = length(.feature_levels)), .feature_levels)
+
+# 1) Long features as semi-transparent rectangles
+if (nrow(long_pos) > 0) {
+  p_msa <- p_msa +
+    ggplot2::geom_rect(
+      data = long_pos,
+      ggplot2::aes(xmin = xleft, xmax = xright, ymin = ymin, ymax = ymax, fill = feature),
+      inherit.aes = FALSE,
+      alpha = 0.55,
+      color = "black",
+      linewidth = 0.2  # use 'size' if your ggplot2 is older
+    )
+}
+
+# 2) Short features as dots at the midpoint (drawn on top)
+if (nrow(short_pos) > 0) {
+  p_msa <- p_msa +
+    ggplot2::geom_point(
+      data = short_pos,
+      ggplot2::aes(x = x_mid, y = y_mid, fill = feature),
+      inherit.aes = FALSE,
+      shape = 21,          # filled circle with outline
+      size = 2.2,          # tweak to taste
+      stroke = 0.3,
+      color = "black"
+    )
+}
+
+# Shared fill scale for both rectangles and points
+p_msa <- p_msa +
+  ggplot2::scale_fill_manual(values = .fill_vals, drop = FALSE, name = "Feature")
+# -----------------------------------------------------------------------------#
+
+} else {
+  # Do nothing. Keep the rest of the script unchanged.
+}
 
 pdf(paste(file,".MSA.pdf",sep=""), height=opt$height, width=opt$width)
 print("Using this MSA sequence")
 print(msa)
-msaplot(p2,msa,offset=opt$heatmap_offset,color=msa_colors,bg_line=FALSE,)
+p_msa
 dev.off()
 
 

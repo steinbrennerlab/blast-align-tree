@@ -5,12 +5,13 @@ from Bio import SeqIO
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("entry", help="name of gene folder")
+    parser.add_argument("gene", help="name of gene folder")
     parser.add_argument("list", help="file with one gene ID per line")
     parser.add_argument("aa_start", type=int, nargs='?', default=0)
     parser.add_argument("aa_end", type=int, nargs='?')
     args = parser.parse_args()
 
-    fasta_path = f"{args.entry}/{args.entry}.nt.parse.merged.fa"
+    fasta_path = f"{args.entry}/{args.gene}.nt.parse.merged.fa"
     list_path  = f"{args.entry}/output/{args.list}"
     out_path   = f"{args.entry}/output/{args.list}.cds.fa"
 
