@@ -20,6 +20,9 @@ import shutil
 import subprocess
 import sys
 from typing import Iterable, List, Tuple, Optional
+import re
+import tempfile
+
 
 # Biopython
 from Bio import SeqIO
@@ -402,6 +405,209 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
         "--write", write_arg
     ]
     run(cmd, cwd=workdir)
+    
+# -----------------------
+# Motif & HMMER feature detection
+# -----------------------
+
+def _prosite_to_regex(pat: str) -> str:
+    """
+    Minimal PROSITE→regex converter:
+      - x or X → .
+      - - is removed
+      - {P}  → [^P]
+      - [ST] stays [ST]
+      - x(2) or  → .{2} / [ST]{2}
+      - x(2,4) → .{2,4}
+      - '<' anchor start, '>' anchor end (optional)
+    Examples:
+      C-x(2)-C       -> C.{2}C
+      H-x(2)-H       -> H.{2}H
+      G-[ST]-x(2)-E  -> G[ST].{2}E
+              -> [DE]{2}
+      <M-x(3)-K>     -> ^M.{3}K$
+    """
+    s = pat.strip()
+    # anchors
+    anchor_start = s.startswith("<")
+    anchor_end   = s.endswith(">")
+    s = s.lstrip("<").rstrip(">")
+
+    # basic substitutions
+    s = s.replace("-", "")
+    s = re.sub(r"[xX]", ".", s)
+    s = re.sub(r"\{([^}]+)\}", r"[^\1]", s)  # {P} -> [^P]
+
+    # (n) and (m,n) repeat counts on the previous token
+    # previous token can be: literal AA, '.', bracket class [...]
+    def _rep_sub(m):
+        token = m.group(1)
+        count = m.group(2)
+        return f"{token}{{{count}}}"
+
+    def _rep_rng_sub(m):
+        token = m.group(1)
+        a, b = m.group(2), m.group(3)
+        return f"{token}{{{a},{b}}}"
+
+    s = re.sub(r"(\.|\[[^\]]+\]|[A-Za-z])\((\d+)\)", _rep_sub, s)
+    s = re.sub(r"(\.|\[[^\]]+\]|[A-Za-z])\((\d+),(\d+)\)", _rep_rng_sub, s)
+
+    if anchor_start:
+        s = "^" + s
+    if anchor_end:
+        s = s + "$"
+    return s
+
+def _parse_named_motifs(raw: list[str], syntax: str) -> list[tuple[str, re.Pattern]]:
+    """
+    raw items can be:
+      NAME=PATTERN   (feature name + pattern)
+      PATTERN        (feature name becomes the original string)
+    syntax: "regex" or "prosite"
+    """
+    motifs = []
+    for item in raw:
+        if "=" in item:
+            name, pat = item.split("=", 1)
+        else:
+            name, pat = item, item
+        if syntax == "prosite":
+            pat = _prosite_to_regex(pat)
+        compiled = re.compile(pat)
+        motifs.append((name, compiled))
+    return motifs
+
+def _build_alignment_maps(aln_fa: Path) -> dict[str, list[int]]:
+    """
+    For each aligned sequence, build a map:
+      map[ungapped_aa_index] = aligned_column_index   (1-based, inclusive)
+    Useful to translate unaligned hits -> alignment coordinates.
+    """
+    maps = {}
+    for rec in SeqIO.parse(str(aln_fa), "fasta"):
+        seq = str(rec.seq)
+        ungapped = 0
+        m = {}
+        for i, ch in enumerate(seq, start=1):
+            if ch != "-":
+                ungapped += 1
+                m[ungapped] = i
+        maps[rec.id] = m
+    return maps
+
+def _scan_motifs(seq_fa: Path, motifs: list[tuple[str, re.Pattern]], allow_overlap: bool) -> list[tuple[str, int, int, str]]:
+    """
+    Returns list of (label, start_aa_unaligned, end_aa_unaligned, feature)
+    """
+    hits = []
+    for rec in SeqIO.parse(str(seq_fa), "fasta"):
+        s = str(rec.seq)
+        for feat_name, pat in motifs:
+            if allow_overlap:
+                # Use lookahead to capture overlaps
+                la = re.compile(f"(?=({pat.pattern}))")
+                for m in la.finditer(s):
+                    span = m.span(1)
+                    if span[0] == -1:
+                        continue
+                    start = span[0] + 1
+                    end   = span[1]
+                    hits.append((rec.id, start, end, feat_name))
+            else:
+                for m in pat.finditer(s):
+                    start = m.start() + 1
+                    end   = m.end()
+                    hits.append((rec.id, start, end, feat_name))
+    return hits
+
+def _run_hmmscan(hmm_file: Path, seq_fa: Path, tmpdir: Path) -> list[tuple[str, int, int, str]]:
+    """
+    Run hmmscan --domtblout on seq_fa against hmm_file.
+    Returns list of (label, start_aa_unaligned, end_aa_unaligned, feature=HMM name).
+    """
+    domtbl = tmpdir / (hmm_file.stem + ".domtblout")
+    run(["hmmscan", "--noali", "--domtblout", str(domtbl), str(hmm_file), str(seq_fa)])
+    out = []
+    if not domtbl.exists():
+        return out
+    with domtbl.open("r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if not line or line.startswith("#"):
+                continue
+            parts = line.strip().split()
+            if len(parts) < 23:
+                continue
+            hmm_name   = parts[0]    # target (HMM) name
+            query_name = parts[3]    # sequence id
+            ali_from   = int(parts[17])
+            ali_to     = int(parts[18])
+            start, end = (ali_from, ali_to) if ali_from <= ali_to else (ali_to, ali_from)
+            out.append((query_name, start, end, f"HMM:{hmm_name}"))
+    return out
+
+def _to_alignment_coords(hits_unaligned: list[tuple[str,int,int,str]],
+                         aln_maps: dict[str, list[int]]) -> list[tuple[str,int,int,str]]:
+    aligned = []
+    for label, s, e, feat in hits_unaligned:
+        m = aln_maps.get(label)
+        if not m:
+            # label not present in alignment; skip
+            continue
+        if s in m and e in m:
+            aligned.append((label, m[s], m[e], feat))
+        else:
+            # If edges fall off (rare), try best-effort clamp inward
+            # Find nearest mapped positions
+            s2 = next((m[i] for i in range(s, 0, -1) if i in m), None)
+            e2 = next((m[i] for i in range(e, 0, -1) if i in m), None)
+            if s2 is not None and e2 is not None and s2 <= e2:
+                aligned.append((label, s2, e2, feat))
+    return aligned
+
+def _write_features_tsv(rows: list[tuple[str,int,int,str]], out_fp: Path):
+    ensure_dir(out_fp.parent)
+    rows_sorted = sorted(rows, key=lambda r: (r[0], r[1], r[2], r[3]))
+    with out_fp.open("w", encoding="utf-8") as w:
+        w.write("label\taa_start\taa_end\tfeature\n")
+        for label, a, b, feat in rows_sorted:
+            w.write(f"{label}\t{a}\t{b}\t{feat}\n")
+
+def annotate_features(entry: str,
+                      workdir: Path,
+                      motifs_raw: list[str],
+                      motif_syntax: str,
+                      motif_overlap: bool,
+                      hmm_files: list[str]) -> Path:
+    """
+    Generate output/features.txt with alignment-based AA coordinates.
+    """
+    entry_dir = workdir / entry
+    seq_fa = entry_dir / f"{entry}.parse.merged.fa"            # unaligned AA with tree tip labels
+    aln_fa = entry_dir / f"{entry}.parse.merged.clustal.fa"    # final alignment
+    out_fp = entry_dir / "output" / "features.txt"
+
+    aln_maps = _build_alignment_maps(aln_fa)
+    all_hits_unaligned: list[tuple[str,int,int,str]] = []
+
+    # Motifs
+    if motifs_raw:
+        motifs = _parse_named_motifs(motifs_raw, motif_syntax)
+        all_hits_unaligned.extend(_scan_motifs(seq_fa, motifs, allow_overlap=motif_overlap))
+
+    # HMMER
+    if hmm_files:
+        check_tool("hmmscan")
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            for hmm in hmm_files:
+                all_hits_unaligned.extend(_run_hmmscan(Path(hmm), seq_fa, tdp))
+
+    # Map to alignment coordinates and write
+    aligned_hits = _to_alignment_coords(all_hits_unaligned, aln_maps)
+    _write_features_tsv(aligned_hits, out_fp)
+    return out_fp
+
 
 # -----------------------
 # Main
@@ -425,6 +631,14 @@ def main():
         default="tblastn",
         help="Choose between tblastn (DNA DBs) or blastp (protein DBs). Default=tblastn"
     )
+    ap.add_argument("--motif", dest="motifs", nargs="*", default=[],
+                    help="AA motif patterns. Accepts NAME=PATTERN to name a motif. Default syntax is regex.")
+    ap.add_argument("--motif_syntax", choices=["regex", "prosite"], default="regex",
+                    help="Syntax for --motif patterns. Use 'prosite' for simple PROSITE-like forms (e.g., C-x(2)-C).")
+    ap.add_argument("--motif_overlap", action="store_true",
+                    help="Allow overlapping motif matches (uses regex lookahead).")
+    ap.add_argument("--hmm", dest="hmms", nargs="*", default=[],
+                    help="One or more HMMER profile files (.hmm). Scans unaligned AA sequences with hmmscan.")
     args = ap.parse_args()
     blast_type = args.blast_type
 
@@ -551,6 +765,17 @@ def main():
 
     # Step 7: clustalo and FastTree
     clustalo_and_fasttree(entry, workdir)
+    
+    # Step 7.5: annotate motifs/HMMs (optional)
+    if args.motifs or args.hmms:
+        print("FOUND MOTIFS")
+        feats_path = annotate_features(entry, workdir,
+                                       motifs_raw=args.motifs,
+                                       motif_syntax=args.motif_syntax,
+                                       motif_overlap=args.motif_overlap,
+                                       hmm_files=args.hmms)
+        print(f"[features] wrote: {feats_path}")
+
 
     print("\nDone.")
     print(f"Key outputs under: {entry_dir}")
