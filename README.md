@@ -1,6 +1,8 @@
 # blast-align-tree
 A pipeline to identify BLAST hits and perform phylogenetic analysis across multiple queries and local genome databases.
 
+<span style="color:red"> *September 2025 -- We are working on a major update and the tutorial below will not work with the current repository. Please use the v0.1.1 release.*</span>
+
 [![DOI](https://zenodo.org/badge/374224275.svg)](https://zenodo.org/doi/10.5281/zenodo.10888646)
  
 ## Introduction
