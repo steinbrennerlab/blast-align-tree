@@ -128,6 +128,28 @@ def bt_suffix(blast_type: str) -> str:
 
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
     return workdir / entry / f"{q}.{db}.seq.{bt_suffix(blast_type)}"
+    
+def move_old_files(entry_root: Path):
+    """
+    If entry_root contains items other than 'runs' or 'old_files',
+    move them into 'old_files/'.
+    """
+    items = [
+        item for item in entry_root.iterdir()
+        if item.name not in ("runs", "old_files")
+    ]
+    if not items:
+        return  # directory is empty except runs/old_files
+
+    old_dir = entry_root / "old_files"
+    ensure_dir(old_dir)
+    for item in items:
+        target = old_dir / item.name
+        ensure_dir(target.parent)
+        shutil.move(str(item), str(target))
+    print(f"[info] moved existing files to {old_dir}")
+
+
 
 # -----------------------
 # Inlined helpers (formerly separate scripts)
@@ -393,7 +415,7 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
     Run visualize-tree.r on the combinedtree.nwk 
     By default, --write argument is set to the first query name.
     """
-    rscript = workdir / "visualize-tree.r"
+    rscript = workdir / "visualize_tree.r"
 
     if not rscript.exists():
         raise SystemExit(f"R script not found: {rscript}")
@@ -580,20 +602,21 @@ def annotate_features(entry: str,
                       motif_overlap: bool,
                       hmm_files: list[str]) -> Path:
     """
-    Generate output/features.txt with alignment-based AA coordinates.
+    Generate output/features.txt with **raw (unaligned)** AA coordinates
+    taken directly from the unaligned per-sequence FASTA.
     """
     entry_dir = workdir / entry
-    seq_fa = entry_dir / f"{entry}.parse.merged.fa"            # unaligned AA with tree tip labels
-    aln_fa = entry_dir / f"{entry}.parse.merged.clustal.fa"    # final alignment
+    seq_fa = entry_dir / f"{entry}.parse.merged.fa"   # unaligned AA with tree tip labels
     out_fp = entry_dir / "output" / "features.txt"
 
-    aln_maps = _build_alignment_maps(aln_fa)
     all_hits_unaligned: list[tuple[str,int,int,str]] = []
 
     # Motifs
     if motifs_raw:
         motifs = _parse_named_motifs(motifs_raw, motif_syntax)
-        all_hits_unaligned.extend(_scan_motifs(seq_fa, motifs, allow_overlap=motif_overlap))
+        all_hits_unaligned.extend(
+            _scan_motifs(seq_fa, motifs, allow_overlap=motif_overlap)
+        )
 
     # HMMER
     if hmm_files:
@@ -603,9 +626,8 @@ def annotate_features(entry: str,
             for hmm in hmm_files:
                 all_hits_unaligned.extend(_run_hmmscan(Path(hmm), seq_fa, tdp))
 
-    # Map to alignment coordinates and write
-    aligned_hits = _to_alignment_coords(all_hits_unaligned, aln_maps)
-    _write_features_tsv(aligned_hits, out_fp)
+    # Write **unaligned** coordinates directly
+    _write_features_tsv(all_hits_unaligned, out_fp)
     return out_fp
 
 
@@ -663,8 +685,12 @@ def main():
     entrydb = args.query_databases[0]  # kept for parity with bash; extract uses both
 
     # Create directories
-    entry_dir = workdir / entry
+    entry_dir = workdir / entry    
+    # Check if directory has leftover files besides 'runs'
+    move_old_files(entry_dir)
+    
     ensure_dir(entry_dir / "output")
+    
     print(f"Making directory based on first query: {entry}")
     print(f"First database to search, entrydb: {entrydb}")
     print("All queries:", *args.queries, sep="\n  ")

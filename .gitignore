@@ -15,7 +15,7 @@
 !/.gitignore
 
 # Don't ignore these specific files in the root directory
-!/visualize-tree.r
+!/visualize_tree.r
 !/psiblast-align-tree.sh
 !/tblastn-align-tree.sh
 !/blastp-align-tree.sh

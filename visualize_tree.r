@@ -15,6 +15,7 @@
 #install.packages("tidyselect")
 #install.packages("labeling")
 #install.packages("tidyverse")
+#install.packages("broom")
 
 #Certain ggtree functions may require the development version of treeio; make sure it is current from github
 #install.packages("devtools")
@@ -27,6 +28,7 @@ library("ggtree")
 library("optparse")
 library("tidytree")
 library("ape")
+library("broom")
 
 sessionInfo()
 
@@ -85,17 +87,13 @@ option_list <- list(
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
 
-# ---- path resolution (do NOT mutate opt$entry/opt$write) ----
+# ---- path resolution (does not mutate opt$entry/opt$write) ----
 append_rel <- function(base, subdir) {
   if (is.null(subdir) || !nzchar(subdir)) return(base)
   file.path(base, gsub("^[/\\\\]+", "", subdir))
 }
-
 ENTRY_DIR <- append_rel(opt$entry, opt$subdir)
 WRITE_DIR <- append_rel(opt$subdir, opt$write)
-message(WRITE_DIR)
-#dir.create(WRITE_DIR, recursive = TRUE, showWarnings = FALSE)
-
 message(sprintf("ENTRY_DIR=%s", ENTRY_DIR))
 message(sprintf("WRITE_DIR=%s", WRITE_DIR))
 
@@ -189,14 +187,12 @@ p <- p %<+% dd
 
 #How many tips does the tree have
 a <- as.integer(length(tree$tip.label))
-print(a)
 
 #set height dimension for output based on number of tips
 node_count <- length(tree$tip.label)
 print("The number of nodes in tree p is:")
 print(node_count)
 opt$height <- ((node_count/11.27)+0.5)
-
 
 #Define tip and node label sizes
 size <- opt$size
@@ -206,76 +202,21 @@ message(size)
 print("The node label font size is")
 message(size2)
 
-
-# Read all datasets in the /datasets folder
-## Function to read datasets from a folder
-
-read_datasets <- function(folder_path) {
-  print("read datasets function")
-  dataset_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
-  datasets <- list()
-  
-  for (file in dataset_files) {
-    print(file)
-	dataset_name <- tools::file_path_sans_ext(basename(file))
-    datasets[[dataset_name]] <- read.delim2(file, sep = "\t", header = TRUE, stringsAsFactor = FALSE)
-	print(dataset_name)
-  }
-  
-  return(datasets)
+# If option -l is specified, include node numbering
+if (opt$labels_boolean > 0) {
+	p <- p + geom_text2(aes(subset=!isTip, label=node), color="red", hjust=-.3, size=size2) #node labels
 }
-
-## Function to add datasets to the tree
-add_datasets_to_tree <- function(p, datasets, base_offset) {
-  cumulative_offset <- opt$symbol_offset + 0.5
-  for (i in seq_along(datasets)) {
-    dataset_name <- names(datasets)[i]
-    dataset <- datasets[[i]]
-    
-    p <- p %<+% dataset
-    
-    # Add dataset name as text annotation
-    # This should stay fixed for each dataset
-    p <- p + annotate("text", size = opt$size, x = max(p$data$x) + base_offset + cumulative_offset,
-                      y = max(p$data$y) + 2.4, label = dataset_name, fontface = "bold", hjust = 0)
-    
-    # Add columns as tip labels
-    columns_to_display <- names(dataset)[-1]  # Exclude the first column
-    for (j in seq_along(columns_to_display)) {
-      column_name <- columns_to_display[j]
-      column_offset <- (j - 1) * 0.2
-      
-      # The column data should use the cumulative offset plus its own offset
-      p <- p + geom_tiplab(aes(label = .data[[column_name]]), size = 1, align = TRUE,
-                           linetype = NA, offset = base_offset + cumulative_offset + column_offset)
-      
-      # Column names should align with their data
-      p <- p + annotate("text", size = opt$size * 0.8, 
-                        x = max(p$data$x) + base_offset + cumulative_offset + column_offset,
-                        y = max(p$data$y) + 0.7, 
-                        label = column_name, 
-                        angle = 45, 
-                        hjust = 0)
-    }
-    
-    # Update the cumulative offset after processing each dataset
-    cumulative_offset <- cumulative_offset + length(columns_to_display) * 0.2 + 0.15
-  }
-  total_offset <<- cumulative_offset
-  return(p)
-}
-
 
 xmax <- max(p$data$x)
 
-
-
-
 ###########################
 
-#Takes the tree object and converts it to a dataframe using fortify and data.frame. then reorders it according to the graphical position
-#Apparently fortify might deprecate and switch to the "broom" package for tidying data. In the future it would be good to do this on the ggtree object "p", not "tree", so that flip functions will be reflected in the output
-tips <- fortify(tree)
+#Convert the tree to a dataframe then reorder according to the graphical position
+get_tree_df <- function(tree, layout = "rectangular") {
+  pp <- ggtree::ggtree(tree, layout = layout)
+  pp$data  # tibble with x, y, parent, isTip, node, label, etc.
+}
+tips <- get_tree_df(tree)
 tips <- data.frame(tips$label,tips$y,tips$isTip)
 tips <- tips[order(tips[,3],tips[,2],decreasing=T),]
 
@@ -296,7 +237,7 @@ dir3 <- paste("gene_symbols.txt", sep='')
 dd3 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 p <- p %<+% dd3
 
-  ## create a character vector to define the color schemes for each aes color factor
+## create a character vector to define the color schemes for each aes color factor
 standard_colors <- c(
   "black", "blue", "darkgoldenrod", "purple", "orange", "darkgreen",  # 1-6
   "slategray4",    #  7
@@ -339,17 +280,9 @@ p <- p +
 
 if (opt$genomeLabel_boolean > 0) {
 	p <- p +
-	geom_tiplab(aes(label=genome,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset+1) + 
+	geom_tiplab(aes(label=genome,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset+1.3) + 
 	#genome label names
 	scale_colour_manual(values=standard_colors)
-}
-
-
-
-
-# If option -l is specified, include node numbering
-if (opt$labels_boolean > 0) {
-	p <- p + geom_text2(aes(subset=!isTip, label=node), color="red", hjust=-.3, size=size2) #node labels
 }
 
 #converts "labels" bootstrap to a 1-100 integer
@@ -365,14 +298,75 @@ if (opt$bootstrap_boolean > 0) {
 	p <- p + geom_text(data=d, aes(label=label), size=size, nudge_x=opt$bootstrap_offset)  #bootstraps
 }
 
+
+
+# Read all datasets in the /datasets folder
+## Function to read datasets from a folder
+
+read_datasets <- function(folder_path) {
+  print("read datasets function")
+  dataset_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+  datasets <- list()
+  
+  for (file in dataset_files) {
+    print(file)
+	dataset_name <- tools::file_path_sans_ext(basename(file))
+    datasets[[dataset_name]] <- read.delim2(file, sep = "\t", header = TRUE, stringsAsFactor = FALSE)
+	print(dataset_name)
+  }
+  
+  return(datasets)
+}
+
+## Function to add datasets to the tree, calculating the text offset for each column
+add_datasets_to_tree <- function(p, datasets, base_offset) {
+  cumulative_offset <- opt$symbol_offset + 0.5
+  for (i in seq_along(datasets)) {
+    dataset_name <- names(datasets)[i]
+    dataset <- datasets[[i]]
+    
+    p <- p %<+% dataset
+    
+    # Add dataset name as text annotation
+    # This should stay fixed for each dataset
+    p <- p + annotate("text", size = opt$size, x = max(p$data$x) + base_offset + cumulative_offset,
+                      y = max(p$data$y) + 2.4, label = dataset_name, fontface = "bold", hjust = 0)
+    
+    # Add columns as tip labels
+    columns_to_display <- names(dataset)[-1]  # Exclude the first column
+    for (j in seq_along(columns_to_display)) {
+      column_name <- columns_to_display[j]
+      column_offset <- (j - 1) * 0.2
+      
+      # The column data should use the cumulative offset plus its own offset
+      p <- p + geom_tiplab(aes(label = .data[[column_name]]), size = 1, align = TRUE,
+                           linetype = NA, offset = base_offset + cumulative_offset + column_offset)
+      
+      # Column names should align with their data
+      p <- p + annotate("text", size = opt$size * 0.8, 
+                        x = max(p$data$x) + base_offset + cumulative_offset + column_offset,
+                        y = max(p$data$y) + 0.7, 
+                        label = column_name, 
+                        angle = 45, 
+                        hjust = 0)
+    }
+    
+    # Update the cumulative offset after processing each dataset
+    cumulative_offset <- cumulative_offset + length(columns_to_display) * 0.2 + 0.15
+  }
+  total_offset <<- cumulative_offset
+  return(p)
+}
+
+
   # Read datasets
 datasets <- read_datasets("datasets/")
 
   ## Create a duplicate tree for heatmap and MSA trees below -- it will not have datasets
 p2 <- p
 
-  # Add datasets to the tree
-  p <- add_datasets_to_tree(p, datasets, base_offset = 0)
+# Add datasets to the tree
+p <- add_datasets_to_tree(p, datasets, base_offset = 0)
   
 
 
@@ -391,7 +385,6 @@ system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
 
 #Prints 2 PDFs: data as text, and multiple sequence alignment cartoon
-
 
 pdf(file, height=opt$height, width=opt$width)
 p
@@ -416,64 +409,133 @@ dev.off()
 #gheatmap(p2,counts_file, offset = opt$heatmap_offset, width=opt$heatmap_width+3, font.size=size, colnames_angle=-20, hjust=0, color="black") + #scale_fill_gradient2(low=low_color,high=high_color,mid="white",limits=c(lower,upper)) 
 #dev.off()
 
+
+### Version 2 of the tree will have an MSA cartoon
+
 p_msa<-msaplot(p2,msa,offset=opt$heatmap_offset,color=msa_colors,bg_line=FALSE,) + guides(fill = "none")
 
 if (has_features) {
 
-# --- Add feature rectangles over the existing MSA (drop-in) -------------------
-# Set your features file path (TSV/whitespace-delimited with columns:
-# label, aa_start, aa_end, feature)
+# --- Add feature rectangles over the existing MSA (drop-in; UNALIGNED -> ALIGNED) ----
+# This version reads unaligned positions and maps them to aligned MSA columns.
+# Requirements: Biostrings, ggnewscale (installed on demand below).
+
 feature_file <- file.path(ENTRY_DIR, "output", "features.txt")
 
-
-# 0) Read features
-feat <- utils::read.delim(feature_file, header = TRUE, sep = "", stringsAsFactors = FALSE, check.names = FALSE)
+# 0) Read features (unaligned coordinates)
+feat <- utils::read.delim(feature_file, header = TRUE, sep = "\t",
+                          stringsAsFactors = FALSE, check.names = FALSE, quote = "")
 stopifnot(all(c("label","aa_start","aa_end","feature") %in% names(feat)))
 feat$aa_start <- as.integer(feat$aa_start)
 feat$aa_end   <- as.integer(feat$aa_end)
 feat <- feat[!is.na(feat$label) & !is.na(feat$aa_start) & !is.na(feat$aa_end) & feat$aa_end >= feat$aa_start, , drop = FALSE]
 
-# 1) Extract alignment rectangles from p_msa (works for rect/tile/raster)
+# 1) Build alignment mapping: for each sequence, map unaligned AA index -> aligned column
+if (!requireNamespace("Biostrings", quietly = TRUE)) BiocManager::install("Biostrings")
+alnAA <- Biostrings::readAAStringSet(msa)    # 'msa' path defined above
+lab_order <- names(alnAA)
+
+build_map_list <- function(aa_set) {
+  ml <- vector("list", length(aa_set))
+  names(ml) <- names(aa_set)
+  for (nm in names(aa_set)) {
+    s <- as.character(aa_set[[nm]])
+    ung <- 0L
+    # m[unaligned_index] = aligned_column_index
+    m <- integer(0)
+    for (i in seq_len(nchar(s))) {
+      ch <- substr(s, i, i)
+      if (ch != "-") {
+        ung <- ung + 1L
+        m[ung] <- i
+      }
+    }
+    ml[[nm]] <- m
+  }
+  ml
+}
+map_list <- build_map_list(alnAA)
+
+# Helpers to convert unaligned positions to aligned columns, clamping inside seq length
+map_pos_start <- function(label, pos) {
+  m <- map_list[[label]]
+  if (is.null(m) || length(m) == 0L) return(NA_integer_)
+  if (pos < 1L) pos <- 1L
+  if (pos > length(m)) pos <- length(m)
+  m[pos]
+}
+map_pos_end <- function(label, pos) {
+  m <- map_list[[label]]
+  if (is.null(m) || length(m) == 0L) return(NA_integer_)
+  if (pos < 1L) pos <- 1L
+  if (pos > length(m)) pos <- length(m)
+  m[pos]
+}
+
+# 2) Convert feature starts/ends (unaligned) -> MSA columns (aligned)
+feat$aa_start_col <- mapply(map_pos_start, feat$label, feat$aa_start)
+feat$aa_end_col   <- mapply(map_pos_end,   feat$label, feat$aa_end)
+feat <- feat[!is.na(feat$aa_start_col) & !is.na(feat$aa_end_col), , drop = FALSE]
+
+# ---- Export aligned coordinates for provenance --------------------------------
+aligned_out <- file.path(ENTRY_DIR, "output", paste(opt$write, "_features_aligned.txt", sep=" "))
+export_cols <- c("label", "feature",
+                 "aa_start", "aa_end",           # original unaligned coords
+                 "aa_start_col", "aa_end_col")   # aligned MSA columns
+
+# Add a length column (aligned span) for convenience
+feat$len_aa_aligned <- feat$aa_end_col - feat$aa_start_col + 1L
+export_cols <- c(export_cols, "len_aa_aligned")
+
+# Ensure output dir exists
+dir.create(dirname(aligned_out), recursive = TRUE, showWarnings = FALSE)
+
+# Write tab-delimited, no quotes
+utils::write.table(
+  feat[, export_cols, drop = FALSE],
+  file      = aligned_out,
+  sep       = "\t",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote     = FALSE
+)
+
+message(sprintf("[features] wrote aligned coordinates → %s", aligned_out))
+# ------------------------------------------------------------------------------
+
+# 3) Extract the per-column x-bounds from p_msa’s drawn grid
 pb <- ggplot2::ggplot_build(p_msa)
 
-.normalize_rects <- function(d) {
+normalize_rects <- function(d) {
   if (!("PANEL" %in% names(d))) d$PANEL <- 1L
   if (all(c("xmin","xmax","ymin","ymax") %in% names(d))) {
-    return(d[, c("xmin","xmax","ymin","ymax","PANEL"), drop = FALSE])
-  }
-  if (all(c("x","y","width","height") %in% names(d))) {
-    return(data.frame(
+    d[, c("xmin","xmax","ymin","ymax","PANEL"), drop = FALSE]
+  } else if (all(c("x","y","width","height") %in% names(d))) {
+    data.frame(
       xmin  = d$x - d$width/2,
       xmax  = d$x + d$width/2,
       ymin  = d$y - d$height/2,
       ymax  = d$y + d$height/2,
       PANEL = d$PANEL
-    ))
-  }
-  if (all(c("x","y") %in% names(d))) {
+    )
+  } else if (all(c("x","y") %in% names(d))) {
     ux <- sort(unique(d$x)); uy <- sort(unique(d$y))
     wx <- if (length(ux) > 1) min(diff(ux)) else 1
     hy <- if (length(uy) > 1) min(diff(uy)) else 1
-    return(data.frame(
+    data.frame(
       xmin  = d$x - wx/2,
       xmax  = d$x + wx/2,
       ymin  = d$y - hy/2,
       ymax  = d$y + hy/2,
       PANEL = d$PANEL
-    ))
-  }
-  NULL
+    )
+  } else NULL
 }
-
-rect_list <- Filter(Negate(is.null), lapply(pb$data, .normalize_rects))
-if (length(rect_list) == 0) stop("No rectangular MSA layer found in p_msa.")
-
-# Choose the densest rectangular layer
+rect_list <- Filter(Negate(is.null), lapply(pb$data, normalize_rects))
+stopifnot(length(rect_list) > 0)
 msa_rect <- rect_list[[ which.max(vapply(rect_list, nrow, integer(1))) ]]
 
-# 2) Derive per-column x-bounds from the drawn grid (no matrix/list columns)
 col_center <- (msa_rect$xmin + msa_rect$xmax) / 2
-# Round to collapse float jitter; match centers to 1..N indices
 u_centers  <- sort(unique(round(col_center, 6)))
 col_id     <- match(round(col_center, 6), u_centers)  # 1..N columns
 
@@ -486,69 +548,63 @@ col_edges <- data.frame(
   xright = as.numeric(xright_by_col)
 )
 
-# 3) Compute row height from drawn grid
-row_h <- stats::median(msa_rect$ymax - msa_rect$ymin, na.rm = TRUE)
-
-# 4) Map tip labels -> y positions from the embedded tree data
+# 4) Map tip labels to y positions from p_msa
 tip_df <- p_msa$data
 if ("isTip" %in% names(tip_df)) {
   tip_y <- tip_df[tip_df$isTip %in% TRUE & !is.na(tip_df$label), c("label","y")]
 } else {
-  tip_y <- tip_df[!is.na(tip_df$label), c("label","y")]
-  tip_y <- tip_y[!duplicated(tip_y$label), , drop = FALSE]
+  tmp <- tip_df[!is.na(tip_df$label), c("label","y")]
+  tip_y <- tmp[!duplicated(tmp$label), , drop = FALSE]
 }
 
-# 5) Build overlay rectangles by joining features to y and to column edges
+# 5) Join: features -> y, then to column edges using aligned columns
 feat_pos <- merge(feat, tip_y, by = "label", all.x = TRUE)
-
-feat_pos <- merge(
-  feat_pos,
-  setNames(col_edges, c("aa_start","xleft",".z1")),
-  by = "aa_start", all.x = TRUE
-)
-feat_pos <- merge(
-  feat_pos,
-  setNames(col_edges, c("aa_end",".z2","xright")),
-  by = "aa_end", all.x = TRUE
-)
-
-# Keep only placeable rows
+feat_pos <- merge(feat_pos, setNames(col_edges, c("aa_start_col","xleft",".z1")), by = "aa_start_col", all.x = TRUE)
+feat_pos <- merge(feat_pos, setNames(col_edges, c("aa_end_col",".z2","xright")), by = "aa_end_col", all.x = TRUE)
 feat_pos <- feat_pos[!is.na(feat_pos$xleft) & !is.na(feat_pos$xright) & !is.na(feat_pos$y), , drop = FALSE]
 
-# y extents match each tip's band
+# 6) Compute vertical extents from drawn grid
+row_h <- stats::median(msa_rect$ymax - msa_rect$ymin, na.rm = TRUE)
 feat_pos$ymin <- feat_pos$y - row_h/2
 feat_pos$ymax <- feat_pos$y + row_h/2
 
-# 6) Draw overlay rectangles (fill by 'feature')
-# Okabe–Ito palette (colorblind-friendly), repeats as needed
-.okabe_ito <- c("#000000","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7")
-.feature_levels <- unique(feat_pos$feature)
-.fill_vals <- setNames(rep(.okabe_ito, length.out = length(.feature_levels)), .feature_levels)
-
-# --- Overlay features: rectangles for long spans, dots for short spans --------
-# If you already added ggnewscale::new_scale_fill() earlier, keep that one and remove this next line.
+# 7) Draw: rectangles for long spans, midpoint dots for short (<10 aa)
 if (!requireNamespace("ggnewscale", quietly = TRUE)) utils::install.packages("ggnewscale")
 p_msa <- p_msa + ggnewscale::new_scale_fill()
 
-# Compute feature length (inclusive) and split
 feat_pos$len_aa <- feat_pos$aa_end - feat_pos$aa_start + 1L
 long_pos  <- feat_pos[feat_pos$len_aa >= 10, , drop = FALSE]
 short_pos <- feat_pos[feat_pos$len_aa <  10, , drop = FALSE]
-
-# Midpoint coordinates for short features
 if (nrow(short_pos) > 0) {
   short_pos$x_mid <- (short_pos$xleft + short_pos$xright)/2
-  # center of each MSA row band is at 'y'
   short_pos$y_mid <- short_pos$y
 }
 
-# Color palette (Okabe–Ito), repeated across all feature levels
-.okabe_ito <- c("#E69F00","#56B4E9","#009E73",
-                "#F0E442","#0072B2","#D55E00","#CC79A7")
-.feature_levels <- unique(feat_pos$feature)
-.fill_vals <- setNames(rep(.okabe_ito, length.out = length(.feature_levels)), .feature_levels)
+feature_colors <- c(
+  "#FF0000", # bright red
+  "#FF7F00", # vivid orange
+  "#00FF00", # neon green
+  "#00CED1", # bright turquoise
+  "#00BFFF", # vivid sky blue
+  "#FFD700", # bright yellow-gold
+  "#1E90FF", # dodger blue
+  "#0000FF", # pure bright blue
+  "#8A2BE2", # vivid blue violet
+  "#FF00FF", # magenta
+  "#FF1493", # deep pink
+  "#FF69B4", # hot pink
+  "#FF4500", # orange red
+  "#ADFF2F", # green yellow
+  "#7CFC00", # lawn green
+  "#40E0D0", # turquoise
+  "#00FA9A", # medium spring green
+  "#DA70D6", # orchid
+  "#FF6347", # tomato
+  "#FFFF00"  # pure yellow
+)
+levs <- unique(feat_pos$feature)
+fills <- setNames(rep(feature_colors, length.out = length(levs)), levs)
 
-# 1) Long features as semi-transparent rectangles
 if (nrow(long_pos) > 0) {
   p_msa <- p_msa +
     ggplot2::geom_rect(
@@ -557,28 +613,23 @@ if (nrow(long_pos) > 0) {
       inherit.aes = FALSE,
       alpha = 0.55,
       color = "black",
-      linewidth = 0.2  # use 'size' if your ggplot2 is older
+      linewidth = 0.2
     )
 }
-
-# 2) Short features as dots at the midpoint (drawn on top)
 if (nrow(short_pos) > 0) {
   p_msa <- p_msa +
     ggplot2::geom_point(
       data = short_pos,
       ggplot2::aes(x = x_mid, y = y_mid, fill = feature),
       inherit.aes = FALSE,
-      shape = 21,          # filled circle with outline
-      size = 2.2,          # tweak to taste
+      shape = 21,
+      size = 2.2,
       stroke = 0.3,
       color = "black"
     )
 }
-
-# Shared fill scale for both rectangles and points
-p_msa <- p_msa +
-  ggplot2::scale_fill_manual(values = .fill_vals, drop = FALSE, name = "Feature")
-# -----------------------------------------------------------------------------#
+p_msa <- p_msa + ggplot2::scale_fill_manual(values = fills, drop = FALSE, name = "Feature")
+# -------------------------------------------------------------------------------------
 
 } else {
   # Do nothing. Keep the rest of the script unchanged.
