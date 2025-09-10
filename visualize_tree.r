@@ -724,6 +724,17 @@ Dmat <- compute_distance_matrix(opt$dist_type, tree, msa)
 # 2) Build the dataset (first column MUST be 'label' for %<+%)
 nearest_df <- nearest_by_genome_table(tree, dd, Dmat, round_digits = opt$dist_digits)
 
+# Reorder rows to match the plotted tree's tip order (top-to-bottom)
+tip_order <- tryCatch({
+  dfp <- p2$data
+  dfp <- dfp[!is.na(dfp$label) & dfp$isTip %in% TRUE, c("label","y")]
+  dfp <- dfp[order(dfp$y, decreasing = TRUE), , drop = FALSE]
+  unique(as.character(dfp$label))
+}, error = function(e) tree$tip.label)
+
+nearest_df <- nearest_df[match(tip_order, nearest_df$label), , drop = FALSE]
+row.names(nearest_df) <- NULL
+
 # 2.5) Also write the nearest-by-genome table to CSV (wide format)
 nearest_csv <- file.path(ENTRY_DIR, "output",
                          paste0(opt$write, ".nearest_", tolower(opt$dist_type), ".csv"))
