@@ -79,7 +79,9 @@ option_list <- list(
 		help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped."),
 	make_option(c("--dist_type"), action="store", type="character", default="patristic", 
 		help="Distance type to compute: 'patristic' or 'phenetic' (case-insensitive)"),
-	make_option(c("--dist_digits"), action="store", type="integer", default=3, help="Number of digits to round distances when printed")
+	make_option(c("--dist_digits"), action="store", type="integer", default=3, help="Number of digits to round distances when printed"),
+	make_option(c("--nearest_from"), type = "character", default = NULL,
+		help = "Comma- or semicolon-separated list of genomes to include in the nearest-distance panel. Use exact names as in merged_genome_mapping.txt (column 'genome'). If omitted, all genomes (except a tip's own) are considered.")
 	)
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -93,6 +95,11 @@ ENTRY_DIR <- append_rel(opt$entry, opt$subdir)
 WRITE_DIR <- append_rel(opt$subdir, opt$write)
 message(sprintf("ENTRY_DIR=%s", ENTRY_DIR))
 message(sprintf("WRITE_DIR=%s", WRITE_DIR))
+
+parse_csv_list <- function(x) {
+  if (is.null(x) || !nzchar(x)) return(NULL)
+  unique(trimws(unlist(strsplit(x, "[,;]"))))
+}
 
 ###
 # Check for presence of features.txt in the output folder
@@ -683,31 +690,37 @@ compute_distance_matrix <- function(dist_type = "patristic", tree, msa_path) {
 }
 
 # Helper: build a wide table: first column 'label', then one column per genome
-nearest_by_genome_table <- function(tree, dd, D, round_digits = 3) {
+nearest_by_genome_table <- function(tree, dd, D, round_digits = 3, include_genomes = NULL) {
   tips <- tree$tip.label
   dd2  <- dd[dd$taxa %in% tips, c("taxa","genome")]
   rownames(dd2) <- NULL
-  genomes <- sort(unique(dd2$genome))
-  by_gen  <- split(dd2$taxa, dd2$genome)
 
-  # prepare string matrix so printing looks clean
+  # order genomes: respect user order if provided, otherwise sort
+  if (!is.null(include_genomes)) {
+    # filter dd2 down to requested genomes actually present
+    present <- unique(dd2$genome)
+    genomes <- include_genomes[include_genomes %in% present]
+    dd2     <- dd2[dd2$genome %in% genomes, , drop = FALSE]
+  } else {
+    genomes <- sort(unique(dd2$genome))
+  }
+
+  by_gen <- split(dd2$taxa, dd2$genome)
+
   out_mat <- matrix("", nrow = length(tips), ncol = length(genomes),
                     dimnames = list(tips, genomes))
 
   for (lab in tips) {
     g_self <- dd2$genome[match(lab, dd2$taxa)]
     for (g in genomes) {
-      if (identical(g, g_self)) {
-        out_mat[lab, g] <- ""               # blank for own genome
+      if (!length(g_self)) g_self <- NA_character_
+      if (!is.na(g_self) && identical(g, g_self)) {
+        out_mat[lab, g] <- ""
       } else {
         candidates <- intersect(by_gen[[g]], rownames(D))
         if (length(candidates)) {
           val <- suppressWarnings(min(D[lab, candidates], na.rm = TRUE))
-          if (is.finite(val)) {
-            out_mat[lab, g] <- formatC(val, digits = round_digits, format = "f")
-          } else {
-            out_mat[lab, g] <- ""
-          }
+          out_mat[lab, g] <- if (is.finite(val)) formatC(val, digits = round_digits, format = "f") else ""
         } else {
           out_mat[lab, g] <- ""
         }
@@ -718,11 +731,31 @@ nearest_by_genome_table <- function(tree, dd, D, round_digits = 3) {
   data.frame(label = tips, as.data.frame(out_mat, check.names = FALSE), check.names = FALSE)
 }
 
-# 1) Build the chosen distance matrix
+# ---- parse requested genomes and report availability ----
+requested_genomes <- parse_csv_list(opt$nearest_from)
+if (!is.null(requested_genomes)) {
+  present <- sort(unique(dd$genome))
+  used    <- requested_genomes[requested_genomes %in% present]
+  missing <- setdiff(requested_genomes, present)
+  message(sprintf("[nearest] requested: %s", paste(requested_genomes, collapse = ", ")))
+  message(sprintf("[nearest] present  : %s", paste(present, collapse = ", ")))
+  message(sprintf("[nearest] used     : %s", paste(used, collapse = ", ")))
+  if (length(missing)) message(sprintf("[nearest] not found: %s", paste(missing, collapse = ", ")))
+  if (!length(used)) {
+    message("[nearest] none of the requested genomes are present; skipping nearest panel.")
+  }
+}
+
+# 1) Build the chosen distance matrix (unchanged)
 Dmat <- compute_distance_matrix(opt$dist_type, tree, msa)
 
-# 2) Build the dataset (first column MUST be 'label' for %<+%)
-nearest_df <- nearest_by_genome_table(tree, dd, Dmat, round_digits = opt$dist_digits)
+# 2) Build nearest table with optional filter
+nearest_df <- nearest_by_genome_table(
+  tree, dd, Dmat,
+  round_digits = opt$dist_digits,
+  include_genomes = requested_genomes
+)
+
 
 # Reorder rows to match the plotted tree's tip order (top-to-bottom)
 tip_order <- tryCatch({
@@ -750,14 +783,123 @@ utils::write.table(
 )
 message(sprintf("[nearest] wrote table → %s", nearest_csv))
 
-# 3) Add to a clean copy of your base plot and render
-datasets_nearest <- list()
-datasets_nearest[[paste0("Nearest (", tolower(opt$dist_type), ")")]] <- nearest_df
+# --- Reorder nearest_df to match plotted tip order (top-to-bottom) ---
+tip_order <- tryCatch({
+  dfp <- p2$data
+  dfp <- dfp[!is.na(dfp$label) & dfp$isTip %in% TRUE, c("label","y")]
+  dfp <- dfp[order(dfp$y, decreasing = TRUE), , drop = FALSE]
+  unique(as.character(dfp$label))
+}, error = function(e) tree$tip.label)
+nearest_df <- nearest_df[match(tip_order, nearest_df$label), , drop = FALSE]
+row.names(nearest_df) <- NULL
 
-p_nearest <- add_datasets_to_tree(p2, datasets_nearest, base_offset = 0)
+# --- Build long table for plotting dots (exclude own-genome empties/NA) ---
+# columns to plot (respect filter)
+gen_cols <- setdiff(names(nearest_df), "label")
+if (!length(gen_cols)) {
+  message("[nearest] No genome columns to plot (filter removed all). Skipping nearest panel.")
+} else {
+  nearest_long <- do.call(rbind, lapply(gen_cols, function(g) {
+    data.frame(
+      label        = nearest_df$label,
+      genome_other = g,
+      distance     = suppressWarnings(as.numeric(nearest_df[[g]])),
+      stringsAsFactors = FALSE
+    )
+  }))
+  nearest_long <- nearest_long[!is.na(nearest_long$distance), , drop = FALSE]
 
-width_nearest <- max(p_nearest$data$x) + total_offset
-pdf(paste0(file, ".nearest.pdf"), height = opt$height, width = width_nearest)
-p_nearest
-dev.off()
-### ---------------------------------------------------------------------------
+  # Join tip Y positions
+  tip_y <- p2$data
+  tip_y <- tip_y[!is.na(tip_y$label) & tip_y$isTip %in% TRUE, c("label","y")]
+  tip_y <- tip_y[!duplicated(tip_y$label), , drop = FALSE]
+  plot_df <- merge(nearest_long, tip_y, by = "label", all.x = TRUE)
+  plot_df <- plot_df[!is.na(plot_df$y), , drop = FALSE]
+
+  # Debug: show how many points we will draw
+  message(sprintf("[nearest] points to draw: %d", nrow(plot_df)))
+  if (!nrow(plot_df)) {
+    message("[nearest] plot_df is empty; nothing to draw. Check genome names in --nearest_from vs merged_genome_mapping.txt and that distances are not all blank.")
+  } else {
+    # Geometry for dot panel
+    x_tree_max <- max(p2$data$x, na.rm = TRUE)
+    x0 <- x_tree_max + opt$heatmap_offset
+
+    panel_w_factor <- 4
+    w  <- opt$heatmap_width * panel_w_factor
+
+    max_dist <- max(plot_df$distance, na.rm = TRUE)
+    if (!is.finite(max_dist) || max_dist <= 0) max_dist <- 1
+    plot_df$x <- x0 + (plot_df$distance / max_dist) * w
+
+    size_dot <- 1.8 * 0.25
+    y_range  <- range(plot_df$y, na.rm = TRUE)
+    ymin_vln <- y_range[1] - 0.5
+    ymax_vln <- y_range[2] + 0.5
+
+    vline_zero <- ggplot2::annotate("segment", x = x0, xend = x0, y = ymin_vln, yend = ymax_vln, linewidth = 0.4)
+    qx25 <- x0 + w * 0.25; qx50 <- x0 + w * 0.50; qx75 <- x0 + w * 0.75
+    vline_q25 <- ggplot2::annotate("segment", x = qx25, xend = qx25, y = ymin_vln, yend = ymax_vln, linewidth = 0.25, alpha = 0.25)
+    vline_q50 <- ggplot2::annotate("segment", x = qx50, xend = qx50, y = ymin_vln, yend = ymax_vln, linewidth = 0.25, alpha = 0.25)
+    vline_q75 <- ggplot2::annotate("segment", x = qx75, xend = qx75, y = ymin_vln, yend = ymax_vln, linewidth = 0.25, alpha = 0.25)
+
+    lab_q25 <- ggplot2::annotate("text", x = qx25, y = max(p2$data$y, na.rm = TRUE) + 1.1,
+                                 label = formatC(max_dist * 0.25, digits = opt$dist_digits, format = "f"),
+                                 size = opt$size * 0.7, vjust = 0, hjust = 0.5)
+    lab_q50 <- ggplot2::annotate("text", x = qx50, y = max(p2$data$y, na.rm = TRUE) + 1.1,
+                                 label = formatC(max_dist * 0.50, digits = opt$dist_digits, format = "f"),
+                                 size = opt$size * 0.7, vjust = 0, hjust = 0.5)
+    lab_q75 <- ggplot2::annotate("text", x = qx75, y = max(p2$data$y, na.rm = TRUE) + 1.1,
+                                 label = formatC(max_dist * 0.75, digits = opt$dist_digits, format = "f"),
+                                 size = opt$size * 0.7, vjust = 0, hjust = 0.5)
+								 
+	# Solid max-distance line at x = x0 + w
+	vline_max <- ggplot2::annotate(
+	  "segment",
+	  x = x0 + w, xend = x0 + w,
+	  y = ymin_vln, yend = ymax_vln,
+	  linewidth = 0.4
+	)								 
+
+    gen_levels <- sort(unique(plot_df$genome_other))
+    color_map  <- setNames(standard_colors_generator(length(gen_levels)), gen_levels)
+
+    title_suffix <- if (!is.null(requested_genomes)) paste0(" — from: ", paste(gen_levels, collapse = ", ")) else ""
+
+    p_nearest <- p2 +
+      annotate("text",
+               x = x0, y = max(p2$data$y, na.rm = TRUE) + 2.4,
+               label = paste0("Nearest (", tolower(opt$dist_type), ")", title_suffix),
+               hjust = 0, size = opt$size) +
+      vline_zero + vline_q25 + vline_q50 + vline_q75 + vline_max +
+      annotate("segment",
+               x = x0, xend = x0 + w,
+               y = max(p2$data$y, na.rm = TRUE) + 0.7,
+               yend = max(p2$data$y, na.rm = TRUE) + 0.7,
+               linewidth = 0.3) +
+      annotate("text", x = x0,     y = max(p2$data$y, na.rm = TRUE) + 1.1,
+               label = "0", hjust = 0.5, size = opt$size * 0.8) +
+      annotate("text", x = x0 + w, y = max(p2$data$y, na.rm = TRUE) + 1.1,
+               label = formatC(max_dist, digits = opt$dist_digits, format = "f"),
+               hjust = 0.5, size = opt$size * 0.8) +
+      lab_q25 + lab_q50 + lab_q75 +
+      geom_point(
+        data = plot_df,
+        aes(x = x, y = y, color = genome_other),
+        inherit.aes = FALSE,
+        size = size_dot,
+        alpha = 0.9
+      ) +
+      scale_color_manual(values = color_map, name = "Nearest genome") +
+      # Ensure the right-side panel is in view and not clipped
+      ggplot2::coord_cartesian(xlim = c(NA, x0 + w + opt$push), clip = "off")
+
+    panel_w_factor <- 8
+    w <- opt$heatmap_width * panel_w_factor
+    width_nearest <- x0 + w + opt$push
+
+    pdf(paste0(file, ".nearest.pdf"), height = opt$height, width = width_nearest * 1.6)
+    print(p_nearest)  # <-- important in non-interactive runs
+    dev.off()
+  }
+}
