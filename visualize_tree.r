@@ -73,16 +73,13 @@ option_list <- list(
         help="whether to include genome labels"),
 	make_option(c("-j", "--tree_type"), action="store", default=1, type="numeric", 
         help="Specify a (1) plain tree, (2) heatmap (2), or (3) multiple sequence alignment"),
-	optparse::make_option(
-    c("--features"),
-    type = "character",
-    default = NULL,
-    help = "Optional path to features.txt. If omitted, will try <entry>/output/features.txt. If missing/unreadable, feature overlay is skipped."),
-	make_option(
-    c("--subdir"),
-    type = "character",
-    default = NULL,
-    help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped.")
+	make_option(c("--features"),type = "character",default = NULL,
+		help = "Optional path to features.txt. If omitted, will try <entry>/output/features.txt. If missing/unreadable, feature overlay is skipped."),
+	make_option(c("--subdir"),type = "character",default = NULL,
+		help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped."),
+	make_option(c("--dist_type"), action="store", type="character", default="patristic", 
+		help="Distance type to compute: 'patristic' or 'phenetic' (case-insensitive)"),
+	make_option(c("--dist_digits"), action="store", type="integer", default=3, help="Number of digits to round distances when printed")
 	)
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -641,4 +638,115 @@ print(msa)
 p_msa
 dev.off()
 
+### ------------------- Version 3: nearest-by-genome distances -------------------
+### Requires: tree (ape::phylo), dd with columns 'taxa' and 'genome',
+###           p2 (your base tree with labels), msaplot inputs already prepared
+### Output:   <entry>/output/<write>.nearest.pdf
 
+# Helper: compute a full pairwise distance matrix
+compute_distance_matrix <- function(dist_type = "patristic", tree, msa_path) {
+  dist_type <- tolower(dist_type)
+  tips <- tree$tip.label
+
+  if (dist_type == "patristic") {
+    D <- ape::cophenetic.phylo(tree)
+    # ensure full square over current tips
+    D <- D[tips, tips, drop = FALSE]
+    return(D)
+  }
+
+  # phenetic = uncorrected p-distance on your trimmed ungapped AA alignment
+  if (!requireNamespace("Biostrings", quietly = TRUE)) BiocManager::install("Biostrings")
+  aa <- Biostrings::readAAStringSet(msa_path)
+  seqs <- setNames(as.character(aa), names(aa))
+
+  common <- intersect(tips, names(seqs))
+  D <- matrix(NA_real_, length(tips), length(tips), dimnames = list(tips, tips))
+
+  # simple p-distance over equal-length ungapped AA strings
+  get_pd <- function(a, b) {
+    a <- strsplit(a, "", fixed = TRUE)[[1]]
+    b <- strsplit(b, "", fixed = TRUE)[[1]]
+    L <- min(length(a), length(b))
+    if (L == 0) return(NA_real_)
+    mean(a[seq_len(L)] != b[seq_len(L)])
+  }
+
+  for (i in seq_along(common)) {
+    for (j in i:length(common)) {
+      li <- common[i]; lj <- common[j]
+      d  <- get_pd(seqs[[li]], seqs[[lj]])
+      D[li, lj] <- D[lj, li] <- d
+    }
+  }
+  D
+}
+
+# Helper: build a wide table: first column 'label', then one column per genome
+nearest_by_genome_table <- function(tree, dd, D, round_digits = 3) {
+  tips <- tree$tip.label
+  dd2  <- dd[dd$taxa %in% tips, c("taxa","genome")]
+  rownames(dd2) <- NULL
+  genomes <- sort(unique(dd2$genome))
+  by_gen  <- split(dd2$taxa, dd2$genome)
+
+  # prepare string matrix so printing looks clean
+  out_mat <- matrix("", nrow = length(tips), ncol = length(genomes),
+                    dimnames = list(tips, genomes))
+
+  for (lab in tips) {
+    g_self <- dd2$genome[match(lab, dd2$taxa)]
+    for (g in genomes) {
+      if (identical(g, g_self)) {
+        out_mat[lab, g] <- ""               # blank for own genome
+      } else {
+        candidates <- intersect(by_gen[[g]], rownames(D))
+        if (length(candidates)) {
+          val <- suppressWarnings(min(D[lab, candidates], na.rm = TRUE))
+          if (is.finite(val)) {
+            out_mat[lab, g] <- formatC(val, digits = round_digits, format = "f")
+          } else {
+            out_mat[lab, g] <- ""
+          }
+        } else {
+          out_mat[lab, g] <- ""
+        }
+      }
+    }
+  }
+
+  data.frame(label = tips, as.data.frame(out_mat, check.names = FALSE), check.names = FALSE)
+}
+
+# 1) Build the chosen distance matrix
+Dmat <- compute_distance_matrix(opt$dist_type, tree, msa)
+
+# 2) Build the dataset (first column MUST be 'label' for %<+%)
+nearest_df <- nearest_by_genome_table(tree, dd, Dmat, round_digits = opt$dist_digits)
+
+# 2.5) Also write the nearest-by-genome table to CSV (wide format)
+nearest_csv <- file.path(ENTRY_DIR, "output",
+                         paste0(opt$write, ".nearest_", tolower(opt$dist_type), ".csv"))
+dir.create(dirname(nearest_csv), recursive = TRUE, showWarnings = FALSE)
+utils::write.table(
+  nearest_df,
+  file      = nearest_csv,
+  sep       = ",",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote     = TRUE,
+  na        = ""
+)
+message(sprintf("[nearest] wrote table → %s", nearest_csv))
+
+# 3) Add to a clean copy of your base plot and render
+datasets_nearest <- list()
+datasets_nearest[[paste0("Nearest (", tolower(opt$dist_type), ")")]] <- nearest_df
+
+p_nearest <- add_datasets_to_tree(p2, datasets_nearest, base_offset = 0)
+
+width_nearest <- max(p_nearest$data$x) + total_offset
+pdf(paste0(file, ".nearest.pdf"), height = opt$height, width = width_nearest)
+p_nearest
+dev.off()
+### ---------------------------------------------------------------------------
