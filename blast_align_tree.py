@@ -686,9 +686,11 @@ def main():
 
     # Create directories
     entry_dir = workdir / entry    
+    
+    ensure_dir(entry_dir)
+    
     # Check if directory has leftover files besides 'runs'
     move_old_files(entry_dir)
-    
     ensure_dir(entry_dir / "output")
     
     print(f"Making directory based on first query: {entry}")
