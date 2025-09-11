@@ -22,7 +22,7 @@ import sys
 from typing import Iterable, List, Tuple, Optional
 import re
 import tempfile
-
+from datetime import datetime
 
 # Biopython
 from Bio import SeqIO
@@ -100,8 +100,6 @@ def prepend_header_line(fp: Path, header: str):
     content = fp.read_text(encoding="utf-8", errors="ignore")
     fp.write_text(header + content, encoding="utf-8")
 
-from datetime import datetime
-
 def archive_run(entry_root: Path, timestamp: str) -> Path:
     """
     Move all current contents of ./ENTRY into ./ENTRY/runs/<timestamp>/,
@@ -129,24 +127,41 @@ def bt_suffix(blast_type: str) -> str:
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
     return workdir / entry / f"{q}.{db}.seq.{bt_suffix(blast_type)}"
     
-def move_old_files(entry_root: Path):
+def move_old_files(entry_root: Path, timestamp: Optional[str] = None):
     """
     If entry_root contains items other than 'runs' or 'old_files',
-    move them into 'old_files/'.
+    move them into 'old_files/<timestamp>/'.
+    - Uses current time if timestamp is not provided.
+    - Ensures the target folder is unique if it already exists.
     """
     items = [
         item for item in entry_root.iterdir()
         if item.name not in ("runs", "old_files")
     ]
     if not items:
-        return  # directory is empty except runs/old_files
+        return  # nothing to move beyond runs/old_files
 
-    old_dir = entry_root / "old_files"
+    # Build a timestamped folder under old_files/
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    base_old_dir = entry_root / "old_files" / timestamp
+    old_dir = base_old_dir
+
+    # Ensure uniqueness if same-second invocations occur
+    suffix = 1
+    while old_dir.exists():
+        old_dir = entry_root / "old_files" / f"{timestamp}_{suffix}"
+        suffix += 1
+
     ensure_dir(old_dir)
+
+    # Move everything except 'runs' and 'old_files' into the timestamped folder
     for item in items:
         target = old_dir / item.name
         ensure_dir(target.parent)
         shutil.move(str(item), str(target))
+
     print(f"[info] moved existing files to {old_dir}")
 
 
