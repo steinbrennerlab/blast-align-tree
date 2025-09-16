@@ -81,7 +81,12 @@ option_list <- list(
 		help="Distance type to compute: 'patristic' or 'phenetic' (case-insensitive)"),
 	make_option(c("--dist_digits"), action="store", type="integer", default=3, help="Number of digits to round distances when printed"),
 	make_option(c("--nearest_from"), type = "character", default = NULL,
-		help = "Comma- or semicolon-separated list of genomes to include in the nearest-distance panel. Use exact names as in merged_genome_mapping.txt (column 'genome'). If omitted, all genomes (except a tip's own) are considered.")
+		help = "Comma- or semicolon-separated list of genomes to include in the nearest-distance panel. Use exact names as in merged_genome_mapping.txt (column 'genome'). If omitted, all genomes (except a tip's own) are considered."),
+	make_option(c("--min_brlen"), action="store", type="numeric", default=0.2,
+  help="Report nodes whose incoming branch length >= this value"),
+make_option(c("--include_tips"), action="store", type="integer", default=0,
+  help="1 = include tips in the report, 0 = only internal nodes")
+
 	)
 message(option_list)
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -179,6 +184,60 @@ message(opt$node)
 tree <- tree_subset(tree, nodenum, levels_back = 0)
 }
 write.tree(tree,file_nwk)
+
+# ---- Long-branch node report (APE) ----
+report_long_branches <- function(tree, thr, internal_only = TRUE) {
+  stopifnot(!is.null(tree$edge.length))
+  ed <- as.data.frame(tree$edge)
+  names(ed) <- c("parent","child")
+  ed$len <- tree$edge.length
+
+  Ntip <- ape::Ntip(tree)
+  internal_nodes <- (Ntip + 1):(Ntip + tree$Nnode)
+  children_keep <- if (internal_only) internal_nodes else unique(ed$child)
+
+  i <- which(ed$child %in% children_keep & ed$len >= thr)
+  if (!length(i)) return(ed[0, c("child","parent","len")])
+
+  rows <- lapply(i, function(k) {
+    child  <- ed$child[k]
+    parent <- ed$parent[k]
+    bl     <- ed$len[k]
+
+    # Count descendant tips (genes) in the clade
+    tips_in <- tryCatch(ape::tips(tree, child), error = function(e) NULL)
+    if (is.null(tips_in)) {
+      tips_in <- ape::extract.clade(tree, child)$tip.label
+    }
+    data.frame(
+      node          = child,
+      parent        = parent,
+      branch_length = bl,
+      n_genes       = length(tips_in),
+      example_tip   = if (length(tips_in)) tips_in[1] else NA_character_,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+long_nodes <- report_long_branches(
+  tree,
+  thr = opt$min_brlen,
+  internal_only = (as.integer(opt$include_tips) == 0)
+)
+
+out_csv_long <- file.path(ENTRY_DIR, "output",
+                          paste0(opt$write, ".long_branch_nodes.csv"))
+if (nrow(long_nodes)) {
+  utils::write.table(long_nodes, out_csv_long, sep = ",", row.names = FALSE)
+  message(sprintf("[long-branches] %d rows >= %.4g → %s",
+                  nrow(long_nodes), opt$min_brlen, out_csv_long))
+} else {
+  message(sprintf("[long-branches] No nodes with incoming branch ≥ %.4g", opt$min_brlen))
+}
+# ---------------------------------------
+
 
 p <- ggtree(tree, size=opt$line) #size specifies line size thickness
 
