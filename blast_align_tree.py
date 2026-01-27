@@ -26,8 +26,7 @@ from datetime import datetime
 
 # Biopython
 from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.Seq import translate
+from Bio.Seq import Seq, translate
 
 # -----------------------
 # Utilities

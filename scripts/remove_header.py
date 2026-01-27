@@ -1,26 +1,15 @@
-from Bio import SeqIO
+#!/usr/bin/env python3
+"""Remove FASTA descriptions, keeping only sequence names."""
 import sys
-from Bio import AlignIO
+from Bio import SeqIO
 
-input_file = sys.argv[1]
-output_file = sys.argv[2]
+if len(sys.argv) != 3:
+    print("Usage: remove_header.py <input.fa> <output.fa>")
+    sys.exit(1)
 
-for record in AlignIO.read(input_file, "fasta"):
-    print(record.description)
+input_file, output_file = sys.argv[1], sys.argv[2]
 
-
-def modified(records):
-    for record in records:
-        #Clear the description
-        record.description=""
-        yield record
-
-records = modified(SeqIO.parse(input_file,"fasta"))
-count = SeqIO.write(records, output_file , "fasta")
-print("Converted %i records" % count)
-
-with open(output_file, "w") as o:
-    for record in AlignIO.read(input_file, "fasta"):
-       print(record.name)
-       record.description=""
-       SeqIO.write(record, o, "fasta")
+with open(output_file, "w") as out:
+    for record in SeqIO.parse(input_file, "fasta"):
+        record.description = ""
+        SeqIO.write(record, out, "fasta")

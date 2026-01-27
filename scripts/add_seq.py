@@ -1,46 +1,36 @@
-from Bio.Seq import Seq
-from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
-from Bio.Seq import translate
-from Bio.Blast import NCBIWWW
-from Bio.Blast import NCBIXML
+#!/usr/bin/env python3
+"""
+Append a raw nucleotide sequence (no translation) to the merged FASTA and coding table.
+
+Usage: python add_seq.py <entry> <database> <seq_id>
+"""
 import argparse
-import io
 import os
+from Bio import SeqIO
 
-#Looks for a specific sequence in a fasta file and appends it to both the list of blasted sequences (".parse.merged.fa") and merged_coding.txt
+def main():
+    parser = argparse.ArgumentParser(description="Append a sequence to merged outputs")
+    parser.add_argument("entry", help="Entry folder name")
+    parser.add_argument("database", help="Database filename in genomes/")
+    parser.add_argument("addseq", help="Sequence ID to add")
+    args = parser.parse_args()
 
-parser = argparse.ArgumentParser()
-parser.add_argument("entry", help="name of gene given to original blast scripts")
-parser.add_argument("database")
-parser.add_argument("addseq")
-args = parser.parse_args()
-cwd = os.getcwd()
+    cwd = os.getcwd()
+    db_path = os.path.join(cwd, "genomes", args.database)
+    fa_out = os.path.join(cwd, args.entry, f"{args.entry}.parse.merged.fa")
+    coding_out = os.path.join(cwd, args.entry, "merged_coding.txt")
 
-print("add_translations.py script is using {} as entry".format(args.entry))
-print("add_translations.py script is using {} as database".format(args.database))
-filename = cwd + "/genomes/" + str(args.database)
+    for record in SeqIO.parse(db_path, "fasta"):
+        if record.id == args.addseq:
+            with open(fa_out, "a") as fa:
+                fa.write(f">{record.id}\n{record.seq}\n")
+            with open(coding_out, "a") as txt:
+                txt.write(f"\n{record.id}\t{args.database}")
+            print(f"Added {args.addseq} from {args.database}")
+            return
 
-output = cwd + "/" + str(args.entry) + "/" + str(args.entry) + ".parse.merged.fa"
-print(output)
+    print(f"Sequence {args.addseq} not found in {db_path}")
+    exit(1)
 
-output2 = cwd + "/" + str(args.entry) + "/merged_coding.txt"
-print(output2)
-
-
-for seq_record in SeqIO.parse(filename, "fasta"):
-	if args.addseq == seq_record.id:
-		save_file = open(output, 'a')
-		save_file.write('>')
-		save_file.write(seq_record.id)
-		save_file.write('\n') #line break
-		save_file.write(str((seq_record.seq)))
-		save_file.write('\n')
-		save_file = open(output2, 'a')
-		save_file.write('\n')
-		save_file.write(seq_record.id)
-		save_file.write('\t')
-		save_file.write(args.database)
-		print("Found add_seq! " + args.addseq)
-		print(seq_record.description)
-		exit()
+if __name__ == "__main__":
+    main()

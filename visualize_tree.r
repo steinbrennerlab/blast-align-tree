@@ -2,28 +2,11 @@
 # astein10@uw.edu
 # UW Seattle, Dept of Biology
 
-#Make sure these are installed
-#if (!requireNamespace("BiocManager", quietly = TRUE))
-#install.packages("BiocManager")
-#BiocManager::install("EBImage")
-#BiocManager::install("treeio")
-#BiocManager::install("ggtree")
-#BiocManager::install("Biostrings")
-#install.packages("phytools")
-#install.packages("optparse")
-#install.packages("tidyselect")
-#install.packages("tidyselect")
-#install.packages("labeling")
-#install.packages("tidyverse")
-#install.packages("broom")
-
-#Certain ggtree functions may require the development version of treeio; make sure it is current from github
-#install.packages("devtools")
-#devtools::install_github("GuangchuangYu/treeio")
+# Required packages: ggplot2, treeio, phytools, ggtree, optparse, tidytree, ape, broom
+# BiocManager packages: treeio, ggtree, Biostrings
 library("ggplot2")
 library("treeio")
-library("phytools") # for sims and ASRs
-#("EBImage") # for images
+library("phytools")
 library("ggtree")
 library("optparse")
 library("tidytree")
@@ -301,9 +284,9 @@ v <- as.character(as.matrix(tips)[,1])
 # Write all lines
 write(v, file = file_csv, sep = "\n")
 
-#Using the csv of gene names, extract_seq.py extracts original nucleotide sequences from the parsed, merged, fasta file.  The output fasta file is in the same order as the tree!
+# Extract sequences in tree order: NT (for CDS) and AA (for alignment visualization)
 system(paste("python ", file.path(SCRIPT_BASE, "scripts/extract_seq.py"), " ", ENTRY_DIR, " ", opt$entry, " ", opt$write, ".csv", sep=""))
-system(paste("python ", file.path(SCRIPT_BASE, "scripts/extract_seq_aa.py"), " ", ENTRY_DIR, " ", opt$entry, " ", opt$write, ".csv", sep=""))
+system(paste("python ", file.path(SCRIPT_BASE, "scripts/extract_seq.py"), " ", ENTRY_DIR, " ", opt$entry, " ", opt$write, ".csv --aa", sep=""))
 
 # Read gene symbols to display next to annotated genes
   ## Read gene symbols file from root directory
@@ -458,20 +441,12 @@ system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
 system(paste("python ", file.path(SCRIPT_BASE, "scripts/remove_header.py"), " ", msa_pre, " ", msa, sep=""))
 
 
-#Prints 2 PDFs: data as text, and multiple sequence alignment cartoon
-
-pdf(file, height=opt$height, width=opt$width)
-p
-dev.off()
-
 ###
-#   Tree Version 1 -- Display all data in /datasets. txt files should contain column "taxa" followed by relevant coluns
+#   Tree Version 1 -- Display all data in /datasets. txt files should contain column "taxa" followed by relevant columns
 ###
 
 pdf(file, height=opt$height, width=opt$width)
-
 p
-
 dev.off()
 
 ###
@@ -869,7 +844,7 @@ tip_order <- tryCatch({
 nearest_df <- nearest_df[match(tip_order, nearest_df$label), , drop = FALSE]
 row.names(nearest_df) <- NULL
 
-# 2.5) Also write the nearest-by-genome table to CSV (wide format)
+# Write nearest-by-genome table to CSV (wide format)
 nearest_csv <- file.path(ENTRY_DIR, "output",
                          paste0(opt$write, ".nearest_", tolower(opt$dist_type), ".csv"))
 dir.create(dirname(nearest_csv), recursive = TRUE, showWarnings = FALSE)
@@ -883,16 +858,6 @@ utils::write.table(
   na        = ""
 )
 message(sprintf("[nearest] wrote table → %s", nearest_csv))
-
-# --- Reorder nearest_df to match plotted tip order (top-to-bottom) ---
-tip_order <- tryCatch({
-  dfp <- p2$data
-  dfp <- dfp[!is.na(dfp$label) & dfp$isTip %in% TRUE, c("label","y")]
-  dfp <- dfp[order(dfp$y, decreasing = TRUE), , drop = FALSE]
-  unique(as.character(dfp$label))
-}, error = function(e) tree$tip.label)
-nearest_df <- nearest_df[match(tip_order, nearest_df$label), , drop = FALSE]
-row.names(nearest_df) <- NULL
 
 # --- Build long table for plotting dots (exclude own-genome empties/NA) ---
 # columns to plot (respect filter)
