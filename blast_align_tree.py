@@ -78,7 +78,8 @@ def dedup_fasta_by_id(in_path: Path, out_path: Path):
     """Deduplicate FASTA entries by the header token up to first whitespace."""
     ensure_dir(out_path.parent)
     seen = set()
-    with in_path.open("r", encoding="utf-8", errors="ignore") as fin,          out_path.open("w", encoding="utf-8") as fout:
+    with in_path.open("r", encoding="utf-8", errors="ignore") as fin, \
+         out_path.open("w", encoding="utf-8") as fout:
         write = False
         for line in fin:
             if line.startswith(">"):
@@ -126,7 +127,7 @@ def bt_suffix(blast_type: str) -> str:
 
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
     return workdir / entry / f"{q}.{db}.seq.{bt_suffix(blast_type)}"
-    
+
 def move_old_files(entry_root: Path, timestamp: Optional[str] = None):
     """
     If entry_root contains items other than 'runs' or 'old_files',
@@ -209,7 +210,8 @@ def _extract_copy_blastp(genomes_dir: Path, entry_dir: Path, q: str, qdb: str):
     ensure_dir(dest.parent)
 
     found = False
-    with open(src, "r", encoding="utf-8", errors="ignore") as fin,          open(dest, "w", encoding="utf-8") as fout:
+    with open(src, "r", encoding="utf-8", errors="ignore") as fin, \
+         open(dest, "w", encoding="utf-8") as fout:
         write = False
         for line in fin:
             if line.startswith(">"):
@@ -427,10 +429,10 @@ def clustalo_and_fasttree(entry: str, workdir: Path):
 
 def visualize_tree(entry: str, queries: List[str], workdir: Path):
     """
-    Run visualize-tree.r on the combinedtree.nwk 
+    Run visualize-tree.r on the combinedtree.nwk
     By default, --write argument is set to the first query name.
     """
-    rscript = workdir / "visualize_tree.r"
+    rscript = workdir / "visualize_tree_v2.r"
 
     if not rscript.exists():
         raise SystemExit(f"R script not found: {rscript}")
@@ -442,7 +444,7 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
         "--write", write_arg
     ]
     run(cmd, cwd=workdir)
-    
+
 # -----------------------
 # Motif & HMMER feature detection
 # -----------------------
@@ -700,14 +702,14 @@ def main():
     entrydb = args.query_databases[0]  # kept for parity with bash; extract uses both
 
     # Create directories
-    entry_dir = workdir / entry    
-    
+    entry_dir = workdir / entry
+
     ensure_dir(entry_dir)
-    
+
     # Check if directory has leftover files besides 'runs'
     move_old_files(entry_dir)
     ensure_dir(entry_dir / "output")
-    
+
     print(f"Making directory based on first query: {entry}")
     print(f"First database to search, entrydb: {entrydb}")
     print("All queries:", *args.queries, sep="\n  ")
@@ -808,7 +810,7 @@ def main():
 
     # Step 7: clustalo and FastTree
     clustalo_and_fasttree(entry, workdir)
-    
+
     # Step 7.5: annotate motifs/HMMs (optional)
     if args.motifs or args.hmms:
         print("FOUND MOTIFS")
