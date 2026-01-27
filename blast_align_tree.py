@@ -432,7 +432,7 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
     Run visualize-tree.r on the combinedtree.nwk
     By default, --write argument is set to the first query name.
     """
-    rscript = workdir / "visualize_tree_v2.r"
+    rscript = workdir / "visualize_tree.r"
 
     if not rscript.exists():
         raise SystemExit(f"R script not found: {rscript}")

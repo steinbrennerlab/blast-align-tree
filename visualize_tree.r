@@ -443,8 +443,7 @@ p2 <- p
 # Add datasets to the tree
 p <- add_datasets_to_tree(p, datasets, base_offset = 0)
 
-
-
+heatmap_width <- opt$width
 opt$width <- max(p$data$x) + total_offset
 
 #Creates a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
@@ -465,27 +464,55 @@ pdf(file, height=opt$height, width=opt$width)
 p
 dev.off()
 
-#Optional -- read a datafile for a heatmap
+###
+#   Tree Version 1 -- Display all data in /datasets. txt files should contain column "taxa" followed by relevant coluns
+###
+
+pdf(file, height=opt$height, width=opt$width)
+
+p
+
+dev.off()
+
+###
+#   Tree Version 2 -- Display a specific file as a heatmap
+###
 
 #Set visualization parameters for heatmaps
 ##heatmap colors and limits
-#upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
-#lower <- -7
-#low_color<-"#000099" #blue
-#high_color<-"#FF0000" #red
-#high_color<-"#ffa500" #orange
-#high_color<-"#FFCC33" #yellow
+upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
+lower <- -7
+low_color<-"#000099" #blue
+high_color<-"#FF0000" #red
 
-#print("Reading heatmap data file")
-#counts_file <- read.table("datasets/In11_log2FC.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
-#p <- p %<+% counts_file
+print("Reading heatmap data file")
+heatmap_file <- read.table("datasets/bjornsen_pamps_l2FC.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+p2 <- p2 %<+% heatmap_file
+p2 <- p2 + labs(fill = "Fold-change (log2)", size=1) + guides(
+  fill = guide_colorbar(
+    title.theme  = element_text(size = 6),
+    label.theme  = element_text(size = 6),
+    # Add these parameters to control legend size:
+    barwidth     = unit(0.3, "cm"),   # width of the color bar
+    barheight    = unit(1, "cm"),     # height of the color bar
+    frame.colour = "black",           # optional: adds a frame
+    ticks.colour = "black"            # optional: tick color
+  )
+)
+  
+p2 <- p2 +
+  coord_cartesian(clip = "off") +
+  theme(plot.margin = margin(t = 30, r = 10, b = 10, l = 10))
+  
+pdf(paste(file,".heatmapL2Counts.pdf",sep=""), height=opt$height, width=heatmap_width)
 
-#pdf(paste(file,".heatmap.pdf",sep=""), height=opt$height, width=opt$width)
-#gheatmap(p2,counts_file, offset = opt$heatmap_offset, width=opt$heatmap_width+3, font.size=size, colnames_angle=-20, hjust=0, color="black") + #scale_fill_gradient2(low=low_color,high=high_color,mid="white",limits=c(lower,upper))
-#dev.off()
+gheatmap(p2,heatmap_file, offset = opt$heatmap_offset, colnames_offset_y = 0.5, font.size=2, color="black", colnames_position = "top") + scale_fill_gradient2(low=low_color,high=high_color) 
 
+dev.off()
 
-### Version 2 of the tree will have an MSA cartoon
+###
+#   Tree Version 3 -- Display a multiple sequence alignment cartoon
+###
 
 p_msa<-msaplot(p2,msa,offset=opt$heatmap_offset,color=msa_colors,bg_line=FALSE,) + guides(fill = "none")
 
@@ -716,10 +743,13 @@ print(msa)
 p_msa
 dev.off()
 
-### ------------------- Version 3: nearest-by-genome distances -------------------
-### Requires: tree (ape::phylo), dd with columns 'taxa' and 'genome',
-###           p2 (your base tree with labels), msaplot inputs already prepared
-### Output:   <entry>/output/<write>.nearest.pdf
+
+###
+# Tree Version 4 --  nearest-by-genome distances 
+# Requires: tree (ape::phylo), dd with columns 'taxa' and 'genome',
+# p2 (your base tree with labels), msaplot inputs already prepared
+# Output:   <entry>/output/<write>.nearest.pdf
+###
 
 # Helper: compute a full pairwise distance matrix
 compute_distance_matrix <- function(dist_type = "patristic", tree, msa_path) {
