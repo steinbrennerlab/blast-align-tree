@@ -1,0 +1,34 @@
+name: ggtree314-ggplot35
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+dependencies:
+  # R + plotting stack
+  - r-base=4.4
+  - r-ggplot2=3.5.2
+  - bioconductor-ggtree=3.14.0
+  - bioconductor-treeio>=1.30.0,<1.31.0
+  - r-igraph
+  - libxml2
+  - glpk
+  
+  # Direct libraries
+  - r-ape
+  - r-phytools
+  - r-tidytree
+  - r-optparse
+  - r-broom
+  - r-ggnewscale
+
+  # External CLI tools (Bioconda -- not compatible with windows)
+  #- bioconductor-biostrings
+  #- trimal
+  #- clustalo
+  #- prank
+  #- fasttree
+  #- blast
+
+  # Python bits used by your pipeline
+  - python
+  - biopython
