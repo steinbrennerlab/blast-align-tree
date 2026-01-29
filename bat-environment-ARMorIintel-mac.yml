@@ -1,0 +1,17 @@
+name: bat-cli-python
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  # Python runtime
+  - python >=3.9
+  - biopython
+
+  # Sequence alignment / phylogeny tools
+  - blast
+  - clustalo
+  - prank
+  - trimal
+  - fasttree

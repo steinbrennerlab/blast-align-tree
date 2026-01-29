@@ -1,3 +1,4 @@
+
 # Ignore everything in the root directory
 *
 
@@ -31,3 +32,5 @@
 !/kinase.hmm.h3i
 !/kinase.hmm.h3m
 !/kinase.hmm.h3p
+!/bat-environment-ARMorIintel-mac.yml
+!/bat-environment-linux.yml
