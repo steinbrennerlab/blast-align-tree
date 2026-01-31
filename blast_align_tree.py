@@ -37,14 +37,18 @@ def check_tool(name: str):
         raise SystemExit(f"Required tool not found in PATH: {name}")
 
 def run(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> subprocess.CompletedProcess:
-    print("RUN:", " ".join(cmd))
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        check=True,
-        text=True,
-        capture_output=capture
-    )
+    kw = dict(cwd=str(cwd) if cwd else None, text=True)
+    if capture:
+        kw["capture_output"] = True
+    else:
+        kw["stdout"] = subprocess.PIPE
+        kw["stderr"] = subprocess.PIPE
+    result = subprocess.run(cmd, **kw)
+    if result.returncode != 0:
+        if not capture and result.stderr:
+            sys.stderr.write(result.stderr)
+        raise subprocess.CalledProcessError(result.returncode, cmd)
+    return result
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
@@ -422,7 +426,6 @@ def clustalo_and_fasttree(entry: str, workdir: Path):
     aln_fa = workdir / entry / f"{entry}.parse.merged.clustal.fa"
     run(["clustalo", "-i", str(in_fa), "-o", str(aln_fa)])
     tree_out = Path(str(aln_fa) + ".nwk")
-    print("Running FastTree")
     run(["FastTree", "-out", str(tree_out), str(aln_fa)])
     shutil.copyfile(tree_out, workdir / entry / "combinedtree.nwk")
 
@@ -709,20 +712,23 @@ def main():
     move_old_files(entry_dir)
     ensure_dir(entry_dir / "output")
 
-    print(f"Making directory based on first query: {entry}")
-    print(f"First database to search, entrydb: {entrydb}")
-    print("All queries:", *args.queries, sep="\n  ")
-    print("All source databases for queries:", *args.query_databases, sep="\n  ")
-    print("-dbs, Queries will be BLASTed against all Databases:", *args.database, sep="\n  ")
-    print("Number of subject seqs to pull from tblastn/blastp search:", *args.seqs, sep="\n  ")
-    print(f"dbs length is {len(args.database)}")
-    print(f"Blast type: {blast_type} → searching {'nucleotide (tblastn)' if blast_type=='tblastn' else 'protein (blastp)'} databases")
+    print(f"\n{'='*50}")
+    print(f"  blast-align-tree")
+    print(f"{'='*50}")
+    print(f"  Entry:      {entry}")
+    print(f"  Queries:    {', '.join(args.queries)}")
+    print(f"  Databases:  {', '.join(args.database)}")
+    print(f"  Blast type: {blast_type}")
+    print(f"  Max seqs:   {', '.join(args.seqs)}")
+    print(f"{'='*50}")
 
     # Step 1: extract and translate each query (optionally AA slice)
+    print(f"\n→ Extracting query sequences")
     for q, qdb in zip(args.queries, args.query_databases):
         extract_and_translate(entry, q, qdb, args.slice if args.slice else None, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
+    print(f"\n→ Running BLAST searches")
     jobs: List[Tuple[str, str, str, str]] = []  # (q, db, n, header_rule)
     for q in args.queries:
         for db, n, hdr in zip(args.database, args.seqs, args.header):
@@ -737,6 +743,7 @@ def main():
     with cf.ThreadPoolExecutor(max_workers=args.threads) as ex:
         list(ex.map(_one, jobs))
 
+    print(f"\n→ Merging results")
     # Step 3: combine coding txt → merged_genome_mapping.txt and prepend header
     coding_txts = sorted(entry_dir.glob("*.coding.txt"))
     merged_genome_mapping = entry_dir / "merged_genome_mapping.txt"
@@ -808,31 +815,38 @@ def main():
         optional_add_translations(entry, args.add_dbs, args.add_seqs, workdir)
 
     # Step 7: clustalo and FastTree
+    print(f"\n→ Aligning sequences (Clustal Omega) and building tree (FastTree)")
     clustalo_and_fasttree(entry, workdir)
 
     # Step 7.5: annotate motifs/HMMs (optional)
     if args.motifs or args.hmms:
-        print("FOUND MOTIFS")
+        print(f"\n→ Annotating features (motifs/HMMs)")
         feats_path = annotate_features(entry, workdir,
                                        motifs_raw=args.motifs,
                                        motif_syntax=args.motif_syntax,
                                        motif_overlap=args.motif_overlap,
                                        hmm_files=args.hmms)
-        print(f"[features] wrote: {feats_path}")
+        print(f"  Wrote {feats_path}")
 
-
-    print("\nDone.")
-    print(f"Key outputs under: {entry_dir}")
-    print(f"  Alignment: {entry_dir / (entry + '.parse.merged.clustal.fa')}")
-    print(f"  Tree:      {entry_dir / 'combinedtree.nwk'}")
-    print(f"  Mapping:   {merged_genome_mapping}")
-
+    print(f"\n→ Generating tree visualizations (R/ggtree)")
     # Step 8: run visualize-tree.r
     visualize_tree(entry, args.queries, workdir)
 
     # Step 9: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    archive_run(entry_dir, timestamp)
+    run_dir = archive_run(entry_dir, timestamp)
+
+    print(f"\n{'='*50}")
+    print(f"  Done.")
+    print(f"{'='*50}")
+    print(f"  Alignment: {run_dir / (entry + '.parse.merged.clustal.fa')}")
+    print(f"  Tree:      {run_dir / 'combinedtree.nwk'}")
+    print(f"  Mapping:   {run_dir / 'merged_genome_mapping.txt'}")
+    print(f"  PDFs:      {run_dir / 'output' / ''}")
+    subdir = f"runs/{timestamp}"
+    write_arg = args.queries[0]
+    print(f"\n  To re-draw trees (e.g. with a subnode):")
+    print(f"  Rscript visualize_tree.r -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>")
 
 if __name__ == "__main__":
     main()
