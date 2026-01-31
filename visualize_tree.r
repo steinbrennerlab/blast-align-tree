@@ -550,9 +550,14 @@ map_pos_end <- function(label, pos) {
 }
 
 # 2) Convert feature starts/ends (unaligned) -> MSA columns (aligned)
-feat$aa_start_col <- mapply(map_pos_start, feat$label, feat$aa_start)
-feat$aa_end_col   <- mapply(map_pos_end,   feat$label, feat$aa_end)
+feat$aa_start_col <- as.integer(mapply(map_pos_start, feat$label, feat$aa_start))
+feat$aa_end_col   <- as.integer(mapply(map_pos_end,   feat$label, feat$aa_end))
 feat <- feat[!is.na(feat$aa_start_col) & !is.na(feat$aa_end_col), , drop = FALSE]
+
+if (nrow(feat) == 0L) {
+  message("[features] No features mapped to aligned columns. Skipping feature overlay.")
+  has_features <- FALSE
+} else {
 
 # ---- Export aligned coordinates for provenance --------------------------------
 aligned_out <- file.path(ENTRY_DIR, "output", paste(opt$write, "_features_aligned.txt", sep=" "))
@@ -646,8 +651,7 @@ feat_pos$ymin <- feat_pos$y - row_h/2
 feat_pos$ymax <- feat_pos$y + row_h/2
 
 # 7) Draw: rectangles for long spans, midpoint dots for short (<10 aa)
-if (!requireNamespace("ggnewscale", quietly = TRUE)) utils::install.packages("ggnewscale")
-p_msa <- p_msa + ggnewscale::new_scale_fill()
+#    Use annotate() to avoid ggnewscale/msaplot fill-scale conflicts.
 
 feat_pos$len_aa <- feat_pos$aa_end - feat_pos$aa_start + 1L
 long_pos  <- feat_pos[feat_pos$len_aa >= 10, , drop = FALSE]
@@ -658,55 +662,34 @@ if (nrow(short_pos) > 0) {
 }
 
 feature_colors <- c(
-  "#FF0000", # bright red
-  "#FF7F00", # vivid orange
-  "#00FF00", # neon green
-  "#00CED1", # bright turquoise
-  "#00BFFF", # vivid sky blue
-  "#FFD700", # bright yellow-gold
-  "#1E90FF", # dodger blue
-  "#0000FF", # pure bright blue
-  "#8A2BE2", # vivid blue violet
-  "#FF00FF", # magenta
-  "#FF1493", # deep pink
-  "#FF69B4", # hot pink
-  "#FF4500", # orange red
-  "#ADFF2F", # green yellow
-  "#7CFC00", # lawn green
-  "#40E0D0", # turquoise
-  "#00FA9A", # medium spring green
-  "#DA70D6", # orchid
-  "#FF6347", # tomato
-  "#FFFF00"  # pure yellow
+  "#FF0000", "#FF7F00", "#00FF00", "#00CED1", "#00BFFF",
+  "#FFD700", "#1E90FF", "#0000FF", "#8A2BE2", "#FF00FF",
+  "#FF1493", "#FF69B4", "#FF4500", "#ADFF2F", "#7CFC00",
+  "#40E0D0", "#00FA9A", "#DA70D6", "#FF6347", "#FFFF00"
 )
 levs <- unique(feat_pos$feature)
 fills <- setNames(rep(feature_colors, length.out = length(levs)), levs)
 
-if (nrow(long_pos) > 0) {
+for (i in seq_len(nrow(long_pos))) {
+  row <- long_pos[i, ]
   p_msa <- p_msa +
-    ggplot2::geom_rect(
-      data = long_pos,
-      ggplot2::aes(xmin = xleft, xmax = xright, ymin = ymin, ymax = ymax, fill = feature),
-      inherit.aes = FALSE,
-      alpha = 0.55,
-      color = "black",
-      linewidth = 0.2
-    )
+    annotate("rect",
+      xmin = row$xleft, xmax = row$xright,
+      ymin = row$ymin, ymax = row$ymax,
+      fill = fills[row$feature],
+      alpha = 0.55, color = "black", linewidth = 0.2)
 }
-if (nrow(short_pos) > 0) {
+for (i in seq_len(nrow(short_pos))) {
+  row <- short_pos[i, ]
   p_msa <- p_msa +
-    ggplot2::geom_point(
-      data = short_pos,
-      ggplot2::aes(x = x_mid, y = y_mid, fill = feature),
-      inherit.aes = FALSE,
-      shape = 21,
-      size = 2.2,
-      stroke = 0.3,
-      color = "black"
-    )
+    annotate("point",
+      x = row$x_mid, y = row$y_mid,
+      fill = fills[row$feature],
+      shape = 21, size = 2.2, stroke = 0.3, color = "black")
 }
-p_msa <- p_msa + ggplot2::scale_fill_manual(values = fills, drop = FALSE, name = "Feature")
 # -------------------------------------------------------------------------------------
+
+} # end inner else (nrow(feat) > 0)
 
 } else {
   # Do nothing. Keep the rest of the script unchanged.
