@@ -14,6 +14,10 @@
 !/environments
 !/environments/**
 
+# Don't ignore these specific folders but ignore their contents unless noted
+!/hmm_files
+!/hmm_files/kinase.hmm
+
 # Don't ignore the .gitignore file itself
 !/.gitignore
 
@@ -29,5 +33,4 @@
 !/tree.png
 !/bbl.png
 !/bbl2.png
-!/kinase.hmm
 !/install_r_deps.R
