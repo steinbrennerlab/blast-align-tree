@@ -1,6 +1,7 @@
 
 # Ignore everything in the root directory
 *
+.DS_Store
 
 # But don't ignore these specific directories and their contents
 !/scripts
