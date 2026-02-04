@@ -819,13 +819,17 @@ def main():
     clustalo_and_fasttree(entry, workdir)
 
     # Step 7.5: annotate motifs/HMMs (optional)
+    hmm_dir = workdir / "hmm_files"
+
+    hmm_paths = [str(hmm_dir / hmm_name) for hmm_name in args.hmms]
+
     if args.motifs or args.hmms:
         print(f"\n→ Annotating features (motifs/HMMs)")
         feats_path = annotate_features(entry, workdir,
                                        motifs_raw=args.motifs,
                                        motif_syntax=args.motif_syntax,
                                        motif_overlap=args.motif_overlap,
-                                       hmm_files=args.hmms)
+                                       hmm_files=hmm_paths)
         print(f"  Wrote {feats_path}")
 
     print(f"\n→ Generating tree visualizations (R/ggtree)")

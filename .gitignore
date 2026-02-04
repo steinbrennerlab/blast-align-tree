@@ -1,5 +1,7 @@
+
 # Ignore everything in the root directory
 *
+.DS_Store
 
 # But don't ignore these specific directories and their contents
 !/scripts
@@ -10,6 +12,12 @@
 !/AT4G33430.1/**
 !/images
 !/images/**
+!/environments
+!/environments/**
+
+# Don't ignore these specific folders but ignore their contents unless noted
+!/hmm_files
+!/hmm_files/kinase.hmm
 
 # Don't ignore the .gitignore file itself
 !/.gitignore
@@ -26,8 +34,4 @@
 !/tree.png
 !/bbl.png
 !/bbl2.png
-!/kinase.hmm
-!/kinase.hmm.h3f
-!/kinase.hmm.h3i
-!/kinase.hmm.h3m
-!/kinase.hmm.h3p
+!/install_r_deps.R
