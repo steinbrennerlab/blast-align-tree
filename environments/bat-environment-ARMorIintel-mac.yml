@@ -17,4 +17,4 @@ dependencies:
   - fasttree
   - mafft >=7,<8
   - hmmer
-  - raxml
+  - raxml-ng=1.2.2 

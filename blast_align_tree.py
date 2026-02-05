@@ -421,13 +421,113 @@ def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str
     for db, seq in zip(add_dbs, add_seqs):
         _add_translation_from_db(genomes_dir, entry_dir, db, seq)
 
-def clustalo_and_fasttree(entry: str, workdir: Path):
-    in_fa  = workdir / entry / f"{entry}.parse.merged.fa"
-    aln_fa = workdir / entry / f"{entry}.parse.merged.clustal.fa"
-    run(["clustalo", "-i", str(in_fa), "-o", str(aln_fa)])
+def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str):
+    entry_dir = workdir / entry
+    in_fa = entry_dir / f"{entry}.parse.merged.fa"
+
+    # Canonical alignment filename (independent of aligner)
+    aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
+
+    print(f"→ Aligning sequences with {aligner} ...")
+    align_start = datetime.now()
+
+
+    if aligner == "clustalo":
+        # Clustal Omega writes directly to output file
+        run([
+            "clustalo",
+            "-i", str(in_fa),
+            "-o", str(aln_fa),
+            "--force"
+        ])
+
+    elif aligner == "mafft":
+        cmd = ["mafft", "--thread", str(threads)]
+
+        if mafft_mode == "auto":
+            cmd.append("--auto")
+        elif mafft_mode == "linsi":
+            cmd += ["--localpair", "--maxiterate", "1000"]
+        elif mafft_mode == "einsi":
+            cmd += ["--genafpair", "--maxiterate", "1000"]
+        elif mafft_mode == "fftns2":
+            cmd += ["--retree", "2"]
+
+        cmd.append(str(in_fa))
+
+        result = subprocess.run(
+            cmd,
+            text=True,
+            capture_output=True
+        )
+
+        mafft_log = entry_dir / "mafft.log"
+        mafft_log.write_text(result.stderr, encoding="utf-8")
+
+        if result.returncode != 0:
+            sys.stderr.write(result.stderr)
+            raise subprocess.CalledProcessError(result.returncode, "mafft")
+
+        strategy = "unknown"
+        lines = result.stderr.splitlines()
+
+        for i, line in enumerate(lines):
+            line = line.strip()
+
+            # Case 1: single-line strategy
+            if line.startswith("Strategy") and len(line.split()) > 1:
+                strategy = line
+                break
+
+            if line.startswith("Using"):
+                strategy = line
+                break
+
+            # Case 2: "Strategy:" followed by next line
+            if line == "Strategy:" and i + 1 < len(lines):
+                strategy = f"Strategy {lines[i + 1].strip()}"
+                break
+
+        print(f"  MAFFT strategy: {strategy}")
+
+
+        # Keep only FASTA output
+        fasta_lines = [
+            line for line in result.stdout.splitlines()
+            if line.startswith(">") or re.match(r"^[A-Za-z\-\*]+$", line)
+        ]
+
+        aln_fa.write_text("\n".join(fasta_lines) + "\n", encoding="utf-8")
+
+
+    align_end = datetime.now()
+    print(f"  Alignment time: {align_end - align_start}")
+    print(f"→ Building tree with {tree_builder} ...")
+    tree_start = datetime.now()
     tree_out = Path(str(aln_fa) + ".nwk")
-    run(["FastTree", "-out", str(tree_out), str(aln_fa)])
-    shutil.copyfile(tree_out, workdir / entry / "combinedtree.nwk")
+
+    if tree_builder == "FastTree":
+        run(["FastTree", "-out", str(tree_out), str(aln_fa)])
+
+    elif tree_builder == "RAxML":
+        prefix = entry_dir / f"{entry}.raxmlng"
+
+        run([
+            "raxml-ng",
+            "--msa", str(aln_fa),
+            "--model", "LG+G",
+            "--threads", str(threads),
+            "--prefix", prefix.name
+        ], cwd=entry_dir)
+
+        best_tree = entry_dir / f"{entry}.raxmlng.raxml.bestTree"
+        if not best_tree.exists():
+            raise SystemExit(f"RAxML-NG did not produce a bestTree: {best_tree}")
+
+        shutil.copyfile(best_tree, tree_out)
+    tree_end = datetime.now()
+    print(f"  Tree building time: {tree_end - tree_start}")
+
 
 def visualize_tree(entry: str, queries: List[str], workdir: Path):
     """
@@ -656,6 +756,10 @@ def annotate_features(entry: str,
 
 def main():
     ap = argparse.ArgumentParser(description="Python rewrite of tblastn-align-tree.sh (single-file, helpers inlined)")
+
+    ap.add_argument("--aligner", choices=["clustalo", "mafft"], default="clustalo", help="Multiple sequence aligner to use (default=clustalo)")
+    ap.add_argument("--mafft_mode", choices=["auto", "linsi", "einsi", "fftns2"], default="auto", help="MAFFT alignment strategy (default: auto)")
+    ap.add_argument("--tree_builder", choices=["FastTree", "RAxML"], default="FastTree", help="Tree builder to use (default=FastTree)")
     ap.add_argument("-q", "--queries", nargs="+", required=True, help="fasta ID for query sequences")
     ap.add_argument("-qdbs", "--query_databases", nargs="+", required=True, help="fasta files containing the queries")
     ap.add_argument("-n", "--seqs", nargs="+", required=True, help="-max_target_seqs per search database (align with -dbs)")
@@ -728,6 +832,7 @@ def main():
         extract_and_translate(entry, q, qdb, args.slice if args.slice else None, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
+    print(f"  Parallel BLAST Jobs {args.threads}")
     print(f"\n→ Running BLAST searches")
     jobs: List[Tuple[str, str, str, str]] = []  # (q, db, n, header_rule)
     for q in args.queries:
@@ -740,8 +845,14 @@ def main():
         translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type)
         return job
 
+    blast_start = datetime.now()
+
     with cf.ThreadPoolExecutor(max_workers=args.threads) as ex:
         list(ex.map(_one, jobs))
+
+    blast_end = datetime.now()
+    blast_dt = blast_end - blast_start
+    print(f"  BLAST time: {blast_dt}")
 
     print(f"\n→ Merging results")
     # Step 3: combine coding txt → merged_genome_mapping.txt and prepend header
@@ -814,9 +925,25 @@ def main():
     if args.add_seqs:
         optional_add_translations(entry, args.add_dbs, args.add_seqs, workdir)
 
-    # Step 7: clustalo and FastTree
-    print(f"\n→ Aligning sequences (Clustal Omega) and building tree (FastTree)")
-    clustalo_and_fasttree(entry, workdir)
+    # Step 7: alignment and tree building
+    print(f"Alignment & Tree Threads: {args.threads}")
+    align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode)
+
+    aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
+
+    tree_src = Path(str(aln_fa) + ".nwk")
+    tree_dst = entry_dir / "combinedtree.nwk"
+
+    # Make sure downstream code knows the aligned FASTA path
+    aligned_fasta_path = aln_fa
+
+    if not aln_fa.exists():
+        raise SystemExit(f"Aligned FASTA not found: {aln_fa}")
+    if tree_src.exists():
+        shutil.copyfile(tree_src, tree_dst)
+    else:
+        raise SystemExit(f"Expected tree file not found: {tree_src}")
+
 
     # Step 7.5: annotate motifs/HMMs (optional)
     hmm_dir = workdir / "hmm_files"
@@ -833,6 +960,8 @@ def main():
         print(f"  Wrote {feats_path}")
 
     print(f"\n→ Generating tree visualizations (R/ggtree)")
+
+
     # Step 8: run visualize-tree.r
     visualize_tree(entry, args.queries, workdir)
 
@@ -843,7 +972,7 @@ def main():
     print(f"\n{'='*50}")
     print(f"  Done.")
     print(f"{'='*50}")
-    print(f"  Alignment: {run_dir / (entry + '.parse.merged.clustal.fa')}")
+    print(f"  Alignment: {run_dir / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / 'combinedtree.nwk'}")
     print(f"  Mapping:   {run_dir / 'merged_genome_mapping.txt'}")
     print(f"  PDFs:      {run_dir / 'output' / ''}")

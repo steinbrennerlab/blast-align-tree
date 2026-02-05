@@ -28,6 +28,9 @@ dependencies:
   - prank
   - fasttree
   - blast
+  - mafft >=7,<8
+  - hmmer
+  - raxml-ng=1.2.2 
 
   # Python bits used by your pipeline
   - python
