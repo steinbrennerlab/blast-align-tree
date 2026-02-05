@@ -20,7 +20,7 @@ def main():
     args = parser.parse_args()
 
     if args.aa:
-        fasta_path = f"{args.entry}/{args.gene}.parse.merged.clustal.fa"
+        fasta_path = f"{args.entry}/{args.gene}.parse.merged.aligned.fa"
         out_ext = ".aa.fa"
     else:
         fasta_path = f"{args.entry}/{args.gene}.nt.parse.merged.fa"

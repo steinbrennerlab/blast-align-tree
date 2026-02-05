@@ -59,9 +59,16 @@ for (pkg in setdiff(required_bioc, "ggtree")) {
   }
 }
 
-# ---- Final message ----
-message(sprintf(
-  "\nAll required R packages are installed and compatible.\n  ggplot2: %s\n  ggtree: %s\n",
-  utils::packageVersion("ggplot2"),
-  utils::packageVersion("ggtree")
-))
+# ---- Final message: report versions of all packages ----
+all_packages <- unique(c(required_cran, required_bioc))
+
+cat("\nAll required R packages are installed. Installed versions:\n")
+
+for (pkg in all_packages) {
+  if (requireNamespace(pkg, quietly = TRUE)) {
+    cat(sprintf("  %-12s %s\n", pkg, utils::packageVersion(pkg)))
+  } else {
+    cat(sprintf("  %-12s NOT INSTALLED\n", pkg))
+  }
+}
+
