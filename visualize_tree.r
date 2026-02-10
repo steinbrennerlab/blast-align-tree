@@ -276,8 +276,8 @@ v <- as.character(as.matrix(tips)[,1])
 write(v, file = file_csv, sep = "\n")
 
 # Extract sequences in tree order: NT (for CDS) and AA (for alignment visualization)
-system(paste("python ", file.path(SCRIPT_BASE, "scripts/extract_seq.py"), " ", ENTRY_DIR, " ", opt$entry, " ", opt$write, ".csv", sep=""), ignore.stdout = TRUE, ignore.stderr = TRUE)
-system(paste("python ", file.path(SCRIPT_BASE, "scripts/extract_seq.py"), " ", ENTRY_DIR, " ", opt$entry, " ", opt$write, ".csv --aa", sep=""), ignore.stdout = TRUE, ignore.stderr = TRUE)
+system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, paste0(opt$write, ".csv"))), stdout = FALSE, stderr = FALSE)
+system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, paste0(opt$write, ".csv"), "--aa")), stdout = FALSE, stderr = FALSE)
 
 # Read gene symbols to display next to annotated genes
   ## Read gene symbols file from root directory
@@ -423,8 +423,8 @@ msa_pre <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
 msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
 
 #trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the MSA visualization
-system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""), ignore.stdout = TRUE, ignore.stderr = TRUE)
-system(paste("python ", file.path(SCRIPT_BASE, "scripts/remove_header.py"), " ", msa_pre, " ", msa, sep=""), ignore.stdout = TRUE, ignore.stderr = TRUE)
+system2("trimal", shQuote(c("-in", aa, "-out", msa_pre, "-noallgaps")), stdout = FALSE, stderr = FALSE)
+system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/remove_header.py"), msa_pre, msa)), stdout = FALSE, stderr = FALSE)
 
 
 ###
