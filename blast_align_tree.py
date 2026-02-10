@@ -262,43 +262,47 @@ def _translate_fasta(in_fa: Path, out_fa: Path):
             out.write(">" + rec.description + "\n")
             out.write(str(translate(rec.seq)) + "\n")
 
-def _parse_header_token(description: str, headerword: str, fallback_id: str) -> str:
+def _parse_header_token(description: str, headerword: str, fallback_id: str, suffix: str = "") -> str:
     """
     Former: pull_id_fasta*.py logic
     If headerword == 'id' → return fallback_id (record.id).
     Else: find substring after the first occurrence of headerword and take until next space.
     If headerword not found, return fallback_id.
+    If suffix is provided, strip it from the end of the token.
     """
     if headerword == "id":
-        return fallback_id
-    if headerword not in description:
-        return fallback_id
-    # Split on the headerword and take the part immediately following, up to first space
-    try:
-        part = description.split(headerword, 1)[1]
-        token = part.split(" ", 1)[0]
-        return token
-    except Exception:
-        return fallback_id
+        token = fallback_id
+    elif headerword not in description:
+        token = fallback_id
+    else:
+        # Split on the headerword and take the part immediately following, up to first space
+        try:
+            part = description.split(headerword, 1)[1]
+            token = part.split(" ", 1)[0]
+        except Exception:
+            token = fallback_id
+    if suffix and token.endswith(suffix):
+        token = token[:-len(suffix)]
+    return token
 
-def _parse_fasta_headers(in_fa: Path, out_fa: Path, headerword: str):
+def _parse_fasta_headers(in_fa: Path, out_fa: Path, headerword: str, suffix: str = ""):
     """
     Write a new FASTA where each header is the parsed token.
     """
     ensure_dir(out_fa.parent)
     with open(out_fa, "w", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
-            token = _parse_header_token(rec.description, headerword, rec.id)
+            token = _parse_header_token(rec.description, headerword, rec.id, suffix)
             out.write(f">{token}\n{str(rec.seq)}\n")
 
-def _coding_table(in_fa: Path, out_txt: Path, headerword: str, db_name: str):
+def _coding_table(in_fa: Path, out_txt: Path, headerword: str, db_name: str, suffix: str = ""):
     """
     Create <parsed_token>\t<db_name> lines for each record.
     """
     ensure_dir(out_txt.parent)
     with open(out_txt, "a", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
-            token = _parse_header_token(rec.description, headerword, rec.id)
+            token = _parse_header_token(rec.description, headerword, rec.id, suffix)
             out.write(f"{token}\t{db_name}\n")
 
 def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id: str):
@@ -393,7 +397,8 @@ def translate_and_parse_headers(
     db: str,
     header_rule: str,
     workdir: Path,
-    blast_type: str):
+    blast_type: str,
+    header_suffix: str = ""):
     bt = bt_suffix(blast_type)
     entry_dir = workdir / entry
 
@@ -404,16 +409,16 @@ def translate_and_parse_headers(
         _translate_fasta(in_nt, out_aa)
 
         # pull_id_fasta for nt and translated
-        _parse_fasta_headers(in_nt, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule)
-        _parse_fasta_headers(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.parse.fa", header_rule)
+        _parse_fasta_headers(in_nt, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
+        _parse_fasta_headers(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.parse.fa", header_rule, header_suffix)
 
         # coding table on translated AA
-        _coding_table(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.coding.txt", header_rule, db)
+        _coding_table(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.coding.txt", header_rule, db, header_suffix)
     else:
         # blastp: only AA present → only pull/parse once from *.blastdb.fa
         in_aa = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa"
-        _parse_fasta_headers(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule)
-        _coding_table(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db)
+        _parse_fasta_headers(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
+        _coding_table(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db, header_suffix)
 
 def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path):
     genomes_dir = workdir / "genomes"
@@ -764,6 +769,8 @@ def main():
     ap.add_argument("-qdbs", "--query_databases", nargs="+", required=True, help="fasta files containing the queries")
     ap.add_argument("-n", "--seqs", nargs="+", required=True, help="-max_target_seqs per search database (align with -dbs)")
     ap.add_argument("-hdr", "--header", nargs="+", required=True, help="header parsing rules per db (align with -dbs)")
+    ap.add_argument("-hdr_sfx", "--header_suffix", nargs="+", default=None,
+                    help="suffix to trim from parsed header tokens, per db (use 'none' for no trimming)")
     ap.add_argument("-dbs", "--database", nargs="+", required=True, help="blast databases to search (filenames under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
@@ -796,6 +803,14 @@ def main():
         raise SystemExit("header (-hdr) must have same length as database (-dbs)")
     if args.add_seqs and (len(args.add_seqs) != len(args.add_dbs)):
         raise SystemExit("add_seqs and add_dbs must have the same length")
+
+    # Header suffix: default to no trimming; validate length matches -dbs
+    if args.header_suffix is not None:
+        if len(args.header_suffix) != len(args.database):
+            raise SystemExit("header_suffix (-hdr_sfx) must have same length as database (-dbs)")
+        header_suffixes = [("" if s.lower() == "none" else s) for s in args.header_suffix]
+    else:
+        header_suffixes = [""] * len(args.database)
 
     # External tool checks
     for tool in (["tblastn"] if blast_type == "tblastn" else ["blastp"]):
@@ -834,15 +849,15 @@ def main():
     # Step 2: parallel BLAST per (query, db)
     print(f"  Parallel BLAST Jobs {args.threads}")
     print(f"\n→ Running BLAST searches")
-    jobs: List[Tuple[str, str, str, str]] = []  # (q, db, n, header_rule)
+    jobs: List[Tuple[str, str, str, str, str]] = []  # (q, db, n, header_rule, header_suffix)
     for q in args.queries:
-        for db, n, hdr in zip(args.database, args.seqs, args.header):
-            jobs.append((q, db, n, hdr))
+        for db, n, hdr, sfx in zip(args.database, args.seqs, args.header, header_suffixes):
+            jobs.append((q, db, n, hdr, sfx))
 
-    def _one(job: Tuple[str, str, str, str]):
-        q, db, n, hdr = job
+    def _one(job: Tuple[str, str, str, str, str]):
+        q, db, n, hdr, sfx = job
         out_base, full, fetched_fa = blast_and_post(entry, q, db, n, workdir, blast_type)
-        translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type)
+        translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type, sfx)
         return job
 
     blast_start = datetime.now()
