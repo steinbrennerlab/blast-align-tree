@@ -128,8 +128,12 @@ def bt_suffix(blast_type: str) -> str:
     # Used in filenames to distinguish modes
     return "tblastn" if blast_type == "tblastn" else "blastp"
 
+def db_label(db: str) -> str:
+    """Flatten a db path (e.g. 'subdir/file.fa') into a safe filename component."""
+    return db.replace("/", ".")
+
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
-    return workdir / entry / f"{q}.{db}.seq.{bt_suffix(blast_type)}"
+    return workdir / entry / f"{q}.{db_label(db)}.seq.{bt_suffix(blast_type)}"
 
 def move_old_files(entry_root: Path, timestamp: Optional[str] = None):
     """
@@ -401,24 +405,25 @@ def translate_and_parse_headers(
     header_suffix: str = ""):
     bt = bt_suffix(blast_type)
     entry_dir = workdir / entry
+    dbl = db_label(db)
 
     if blast_type == "tblastn":
         # translate_db produces *.seq.tblastn.blastdb.translate.fa
-        in_nt = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa"
-        out_aa = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa"
+        in_nt = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa"
+        out_aa = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.translate.fa"
         _translate_fasta(in_nt, out_aa)
 
         # pull_id_fasta for nt and translated
-        _parse_fasta_headers(in_nt, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
-        _parse_fasta_headers(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.parse.fa", header_rule, header_suffix)
+        _parse_fasta_headers(in_nt, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
+        _parse_fasta_headers(out_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.translate.fa.parse.fa", header_rule, header_suffix)
 
         # coding table on translated AA
-        _coding_table(out_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.translate.fa.coding.txt", header_rule, db, header_suffix)
+        _coding_table(out_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.translate.fa.coding.txt", header_rule, db, header_suffix)
     else:
         # blastp: only AA present → only pull/parse once from *.blastdb.fa
-        in_aa = entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa"
-        _parse_fasta_headers(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
-        _coding_table(in_aa, entry_dir / f"{q}.{db}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db, header_suffix)
+        in_aa = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa"
+        _parse_fasta_headers(in_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
+        _coding_table(in_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db, header_suffix)
 
 def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path):
     genomes_dir = workdir / "genomes"
@@ -771,7 +776,7 @@ def main():
     ap.add_argument("-hdr", "--header", nargs="+", required=True, help="header parsing rules per db (align with -dbs)")
     ap.add_argument("-hdr_sfx", "--header_suffix", nargs="+", default=None,
                     help="suffix to trim from parsed header tokens, per db (use 'none' for no trimming)")
-    ap.add_argument("-dbs", "--database", nargs="+", required=True, help="blast databases to search (filenames under ./genomes)")
+    ap.add_argument("-dbs", "--database", nargs="+", required=True, help="blast databases to search (filenames or subfolder paths under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
     ap.add_argument("-aa", "--slice", nargs="*", default=[], help="AA slice start end, optional")
@@ -924,17 +929,18 @@ def main():
     orthof = entry_dir / "output" / "orthofinder-input"
     ensure_dir(orthof)
     if blast_type == "tblastn":
-        pattern = f"*.{{db}}.seq.{bt}.blastdb.translate.fa.parse.fa"
+        pattern = f"*.{{dbl}}.seq.{bt}.blastdb.translate.fa.parse.fa"
     else:
-        pattern = f"*.{{db}}.seq.{bt}.blastdb.fa.parse.fa"
+        pattern = f"*.{{dbl}}.seq.{bt}.blastdb.fa.parse.fa"
 
     for db in args.database:
-        db_parts = sorted(entry_dir.glob(pattern.format(db=db)))
-        db_merge = entry_dir / f"{db}.parse.merged.fa"
+        dbl = db_label(db)
+        db_parts = sorted(entry_dir.glob(pattern.format(dbl=dbl)))
+        db_merge = entry_dir / f"{dbl}.parse.merged.fa"
         merge_files(db_parts, db_merge)
-        db_rmdup = entry_dir / f"{db}.parse.merged.rmdup.fa"
+        db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
         dedup_fasta_by_id(db_merge, db_rmdup)
-        shutil.copyfile(db_rmdup, orthof / db)
+        shutil.copyfile(db_rmdup, orthof / dbl)
 
     # Step 6: optional add translations
     if args.add_seqs:
