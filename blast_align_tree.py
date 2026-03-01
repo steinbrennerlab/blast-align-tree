@@ -259,8 +259,15 @@ def _translate_fasta(in_fa: Path, out_fa: Path):
     ensure_dir(out_fa.parent)
     with open(out_fa, "w", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
+            seq = rec.seq
+
+            #enforce full codons AFTER stop removal
+            seq = seq[:len(seq) - (len(seq) % 3)]
+
+            aa = translate(seq)  # keep semantics unchanged
+
             out.write(">" + rec.description + "\n")
-            out.write(str(translate(rec.seq)) + "\n")
+            out.write(str(aa) + "\n")
 
 def _parse_header_token(description: str, headerword: str, fallback_id: str, suffix: str = "") -> str:
     """
@@ -522,6 +529,7 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             "--msa", str(aln_fa),
             "--model", "LG+G",
             "--threads", str(threads),
+            "--blopt", "nr_safe",
             "--prefix", prefix.name
         ], cwd=entry_dir)
 
@@ -673,7 +681,7 @@ def _run_hmmscan(hmm_file: Path, seq_fa: Path, tmpdir: Path) -> list[tuple[str, 
     Returns list of (label, start_aa_unaligned, end_aa_unaligned, feature=HMM name).
     """
     domtbl = tmpdir / (hmm_file.stem + ".domtblout")
-    run(["hmmscan", "--noali", "--domtblout", str(domtbl), str(hmm_file), str(seq_fa)])
+    run(["hmmscan", "--noali", "--cut_ga", "--domtblout", str(domtbl), str(hmm_file), str(seq_fa)])
     out = []
     if not domtbl.exists():
         return out
