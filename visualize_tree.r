@@ -80,7 +80,9 @@ option_list <- list(
 	make_option(c("--min_brlen"), action="store", type="numeric", default=0.2,
   help="Report nodes whose incoming branch length >= this value"),
 make_option(c("--include_tips"), action="store", type="integer", default=0,
-  help="1 = include tips in the report, 0 = only internal nodes")
+  help="1 = include tips in the report, 0 = only internal nodes"),
+make_option(c("--genome_colors"), action="store", type="character", default=NULL,
+  help="Optional genome-specific color overrides. Format: 'GenomeA=red,GenomeB=#00FF00'")
 
 	)
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -98,6 +100,19 @@ message(sprintf("WRITE_DIR=%s", WRITE_DIR))
 parse_csv_list <- function(x) {
   if (is.null(x) || !nzchar(x)) return(NULL)
   unique(trimws(unlist(strsplit(x, "[,;]"))))
+}
+
+parse_genome_colors <- function(x) {
+  if (is.null(x) || !nzchar(x)) return(NULL)
+
+  pairs <- trimws(unlist(strsplit(x, ",")))
+  res <- lapply(pairs, function(p) {
+    kv <- trimws(unlist(strsplit(p, "=")))
+    if (length(kv) != 2) return(NULL)
+    data.frame(genome = kv[1], color = kv[2], stringsAsFactors = FALSE)
+  })
+
+  do.call(rbind, Filter(Negate(is.null), res))
 }
 
 ###
@@ -318,19 +333,44 @@ standard_colors_generator <- function(n) {
 }
 standard_colors <- standard_colors_generator(100)
 
+# ---- Genome color overrides ----
+override_df <- parse_genome_colors(opt$genome_colors)
+
+genomes_present <- sort(unique(dd$genome))
+
+# Default mapping (existing behavior)
+default_map <- setNames(standard_colors_generator(length(genomes_present)),
+                        genomes_present)
+
+if (!is.null(override_df)) {
+
+  override_df <- override_df[override_df$genome %in% genomes_present, , drop = FALSE]
+
+  if (nrow(override_df)) {
+    message(sprintf("[colors] applying overrides: %s",
+      paste(paste(override_df$genome, override_df$color, sep="="), collapse=", ")))
+
+    default_map[override_df$genome] <- override_df$color
+  } else {
+    message("[colors] overrides provided but no matching genomes found")
+  }
+}
+
+final_color_map <- default_map
+
   ## Add gene symbol labels to the tree using offsets specified in the options
 p <- p +
 	geom_tiplab(size=size,offset=opt$label_offset,aes(color=genome,fontface="bold")) +
 	#tip labels (gene names) colored by species
 	geom_tiplab(aes(label=symbol,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset) +
 	#gene symbol names
-	scale_colour_manual(values=standard_colors, guide = guide_legend(ncol = 1, keywidth = 0.3, keyheight = 0.3))
+	scale_colour_manual(values = final_color_map, guide = guide_legend(ncol = 1, keywidth = 0.3, keyheight = 0.3))
 
 if (opt$genomeLabel_boolean > 0) {
 	p <- p +
 	geom_tiplab(aes(label=genome,color=genome), size=opt$symbol_size,align=T, linetype=NA, offset=opt$symbol_offset+1.3) +
 	#genome label names
-	scale_colour_manual(values=standard_colors)
+	scale_colour_manual(values = final_color_map)
 }
 
 #converts "labels" bootstrap to a 1-100 integer
@@ -916,7 +956,10 @@ if (!length(gen_cols)) {
 	)
 
     gen_levels <- sort(unique(plot_df$genome_other))
-    color_map  <- setNames(standard_colors_generator(length(gen_levels)), gen_levels)
+    color_map <- final_color_map[gen_levels]
+    missing_cols <- is.na(color_map)
+    color_map[missing_cols] <- standard_colors_generator(sum(missing_cols))
+
 
     title_suffix <- if (!is.null(requested_genomes)) paste0(" — from: ", paste(gen_levels, collapse = ", ")) else ""
 
