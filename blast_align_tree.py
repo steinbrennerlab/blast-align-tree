@@ -97,6 +97,11 @@ def dedup_fasta_by_id(in_path: Path, out_path: Path):
                 if write:
                     fout.write(line)
 
+def count_fasta_records(fp: Path) -> int:
+    if not fp.exists():
+        return 0
+    return sum(1 for _ in SeqIO.parse(str(fp), "fasta"))
+
 def prepend_header_line(fp: Path, header: str):
     """Prepend a single header line to a file (like sed -i '1s/^/.../')."""
     if not fp.exists():
@@ -441,6 +446,13 @@ def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str
 def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str):
     entry_dir = workdir / entry
     in_fa = entry_dir / f"{entry}.parse.merged.fa"
+    seq_count = count_fasta_records(in_fa)
+
+    if seq_count < 2:
+        raise SystemExit(
+            f"Need at least 2 sequences to align after merge/dedup, but found {seq_count} in {in_fa}. "
+            "This usually means BLAST returned only one unique hit for the query."
+        )
 
     # Canonical alignment filename (independent of aligner)
     aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
