@@ -583,8 +583,10 @@ class GenomeSelectorApp:
 
         # Command tab
         cmd_frame = tk.Frame(self.notebook)
-        self.output = tk.Text(cmd_frame, height=6, wrap="none", state="disabled",
+        self.output = tk.Text(cmd_frame, height=6, wrap="none",
                               font=("Courier", 10))
+        self.output.bind("<Key>", lambda e: "break" if e.keysym not in
+                         ("c", "a") or not (e.state & 0x4) else None)
         self.output.pack(fill="both", expand=True)
         self.notebook.add(cmd_frame, text="Command")
 
@@ -985,12 +987,11 @@ class GenomeSelectorApp:
         if text:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
+            self.root.update()
 
     def _set_output(self, text: str):
-        self.output.configure(state="normal")
         self.output.delete("1.0", "end")
         self.output.insert("1.0", text)
-        self.output.configure(state="disabled")
 
     # ------------------------------------------------------------------
     # Pipeline execution
