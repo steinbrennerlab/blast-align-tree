@@ -466,6 +466,31 @@ msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='
 system2("trimal", shQuote(c("-in", aa, "-out", msa_pre, "-noallgaps")), stdout = FALSE, stderr = FALSE)
 system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/remove_header.py"), msa_pre, msa)), stdout = FALSE, stderr = FALSE)
 
+# Ensure MSA and tree tips match exactly (avoids msaplot crash from mismatches)
+if (!requireNamespace("Biostrings", quietly = TRUE)) BiocManager::install("Biostrings")
+msa_seqs <- Biostrings::readAAStringSet(msa)
+
+# Remove MSA sequences not in the tree
+msa_keep <- names(msa_seqs) %in% tree$tip.label
+if (sum(msa_keep) < length(msa_seqs)) {
+  message(sprintf("[R] Filtering MSA: keeping %d of %d sequences to match tree tips",
+                  sum(msa_keep), length(msa_seqs)))
+  msa_seqs <- msa_seqs[msa_keep]
+}
+
+# Add gap-only sequences for tree tips missing from the MSA
+missing_tips <- setdiff(tree$tip.label, names(msa_seqs))
+if (length(missing_tips) > 0) {
+  aln_width <- unique(Biostrings::width(msa_seqs))[1]
+  gap_str <- paste(rep("-", aln_width), collapse = "")
+  gap_seqs <- Biostrings::AAStringSet(setNames(rep(gap_str, length(missing_tips)), missing_tips))
+  msa_seqs <- c(msa_seqs, gap_seqs)
+  message(sprintf("[R] Added %d gap-only sequences for tree tips missing from MSA",
+                  length(missing_tips)))
+}
+
+Biostrings::writeXStringSet(msa_seqs, msa)
+
 
 ###
 #   Tree Version 1 -- Display all data in /datasets. txt files should contain column "taxa" followed by relevant columns
