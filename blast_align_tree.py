@@ -135,7 +135,7 @@ def bt_suffix(blast_type: str) -> str:
 
 def db_label(db: str) -> str:
     """Flatten a db path (e.g. 'subdir/file.fa') into a safe filename component."""
-    return db.replace("/", ".")
+    return db.replace("/", ".").replace("\\", ".")
 
 def outbase(workdir: Path, entry: str, q: str, db: str, blast_type: str) -> Path:
     return workdir / entry / f"{q}.{db_label(db)}.seq.{bt_suffix(blast_type)}"
@@ -176,6 +176,142 @@ def move_old_files(entry_root: Path, timestamp: Optional[str] = None):
         shutil.move(str(item), str(target))
 
     print(f"[info] moved existing files to {old_dir}")
+
+
+def _move_file_if_exists(src: Path, dst: Path) -> bool:
+    if not src.is_file():
+        return False
+    ensure_dir(dst.parent)
+    if dst.exists():
+        dst.unlink()
+    shutil.move(str(src), str(dst))
+    return True
+
+
+def _unlink_file_if_exists(fp: Path) -> bool:
+    if not fp.is_file():
+        return False
+    fp.unlink()
+    return True
+
+
+def _write_deduped_fasta(in_paths: Iterable[Path], out_path: Path) -> bool:
+    parts = [p for p in in_paths if p.is_file()]
+    if not parts:
+        return False
+    ensure_dir(out_path.parent)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    merge_files(parts, tmp)
+    dedup_fasta_by_id(tmp, out_path)
+    _unlink_file_if_exists(tmp)
+    return True
+
+
+def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases: List[str], blast_type: str):
+    """
+    Keep reports at the run root, move merged/hit sequence material into
+    hits/, then remove derivable BLAST/merge staging files before archiving.
+    """
+    bt = bt_suffix(blast_type)
+    hits_dir = entry_dir / "hits"
+    ensure_dir(hits_dir)
+
+    moved = 0
+    generated = 0
+    removed = 0
+
+    for q in queries:
+        if _move_file_if_exists(entry_dir / f"{q}.seq.fa", hits_dir / f"{q}.seq.fa"):
+            moved += 1
+
+    for db in databases:
+        dbl = db_label(db)
+        db_dir = hits_dir / dbl
+        ensure_dir(db_dir)
+
+        for q in queries:
+            q_label = db_label(q)
+            base = entry_dir / f"{q}.{dbl}.seq.{bt}"
+            if _move_file_if_exists(base, db_dir / f"{q_label}.hit_ids.txt"):
+                moved += 1
+            full = base.with_suffix(base.suffix + ".full")
+            if _move_file_if_exists(full, db_dir / f"{q_label}.blast_report.txt"):
+                moved += 1
+
+        aa_out = db_dir / "all_hits.aa.fa"
+        db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
+        if _move_file_if_exists(db_rmdup, aa_out):
+            moved += 1
+        else:
+            if blast_type == "tblastn":
+                aa_parts = sorted(entry_dir.glob(f"*.{dbl}.seq.{bt}.blastdb.translate.fa.parse.fa"))
+            else:
+                aa_parts = sorted(entry_dir.glob(f"*.{dbl}.seq.{bt}.blastdb.fa.parse.fa"))
+            if _write_deduped_fasta(aa_parts, aa_out):
+                generated += 1
+
+        if blast_type == "tblastn":
+            nt_parts = sorted(entry_dir.glob(f"*.{dbl}.seq.{bt}.blastdb.fa.parse.fa"))
+            if _write_deduped_fasta(nt_parts, db_dir / "all_hits.nt.fa"):
+                generated += 1
+
+        removed += int(_unlink_file_if_exists(entry_dir / f"{dbl}.parse.merged.fa"))
+
+    if blast_type == "tblastn":
+        staging_patterns = [
+            f"*.seq.{bt}.blastdb.stop.fa",
+            f"*.seq.{bt}.blastdb.fa",
+            f"*.seq.{bt}.blastdb.fa.parse.fa",
+            f"*.seq.{bt}.blastdb.translate.fa",
+            f"*.seq.{bt}.blastdb.translate.fa.parse.fa",
+            f"*.seq.{bt}.blastdb.translate.fa.coding.txt",
+        ]
+        staging_files = [
+            entry_dir / f"{entry}.seq.{bt}.blastdb.merged.fa",
+            entry_dir / f"{entry}.seq.{bt}.blastdb.nt.parse.merged.fa",
+            entry_dir / f"{entry}.seq.{bt}.blastdb.translate.merged.fa",
+            entry_dir / f"{entry}.seq.{bt}.blastdb.translate.fa.parse.merged.fa",
+            entry_dir / f"{entry}.merged.fa",
+            entry_dir / f"{entry}.nt.merged.fa",
+        ]
+    else:
+        staging_patterns = [
+            f"*.seq.{bt}.blastdb.fa",
+            f"*.seq.{bt}.blastdb.fa.parse.fa",
+            f"*.seq.{bt}.blastdb.fa.coding.txt",
+        ]
+        staging_files = [
+            entry_dir / f"{entry}.seq.{bt}.blastdb.merged.fa",
+            entry_dir / f"{entry}.seq.{bt}.blastdb.fa.parse.merged.fa",
+            entry_dir / f"{entry}.merged.fa",
+        ]
+
+    for pattern in staging_patterns:
+        for fp in entry_dir.glob(pattern):
+            removed += int(_unlink_file_if_exists(fp))
+
+    staging_files.extend([
+        Path(str(entry_dir / f"{entry}.parse.merged.aligned.fa") + ".nwk"),
+        entry_dir / "mafft.log",
+        entry_dir / "merged_coding.txt",
+    ])
+    for fp in staging_files:
+        removed += int(_unlink_file_if_exists(fp))
+
+    for fp in entry_dir.glob(f"{entry}.raxmlng.raxml.*"):
+        removed += int(_unlink_file_if_exists(fp))
+
+    final_hit_files = [
+        entry_dir / f"{entry}.parse.merged.fa",
+        entry_dir / f"{entry}.parse.merged.aligned.fa",
+    ]
+    if blast_type == "tblastn":
+        final_hit_files.append(entry_dir / f"{entry}.nt.parse.merged.fa")
+    for fp in final_hit_files:
+        if _move_file_if_exists(fp, hits_dir / fp.name):
+            moved += 1
+
+    print(f"[cleanup] hits files moved: {moved}; generated: {generated}; staging files removed: {removed}")
 
 
 
@@ -751,12 +887,12 @@ def annotate_features(entry: str,
                       motif_overlap: bool,
                       hmm_files: list[str]) -> Path:
     """
-    Generate output/features.txt with **raw (unaligned)** AA coordinates
+    Generate features.txt with **raw (unaligned)** AA coordinates
     taken directly from the unaligned per-sequence FASTA.
     """
     entry_dir = workdir / entry
     seq_fa = entry_dir / f"{entry}.parse.merged.fa"   # unaligned AA with tree tip labels
-    out_fp = entry_dir / "output" / "features.txt"
+    out_fp = entry_dir / "features.txt"
 
     all_hits_unaligned: list[tuple[str,int,int,str]] = []
 
@@ -854,7 +990,6 @@ def main():
 
     # Check if directory has leftover files besides 'runs'
     move_old_files(entry_dir)
-    ensure_dir(entry_dir / "output")
 
     print(f"\n{'='*50}")
     print(f"  blast-align-tree")
@@ -945,8 +1080,8 @@ def main():
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
         dedup_fasta_by_id(aa_parse_merged, parse_merged)
 
-    # Step 5: per-database merges → orthofinder-input copies
-    orthof = entry_dir / "output" / "orthofinder-input"
+    # Step 5: per-database merges → Orthofinder-ready copies
+    orthof = entry_dir / "hits" / "orthofinder-input"
     ensure_dir(orthof)
     if blast_type == "tblastn":
         pattern = f"*.{{dbl}}.seq.{bt}.blastdb.translate.fa.parse.fa"
@@ -1006,17 +1141,21 @@ def main():
     # Step 8: run visualize-tree.r
     visualize_tree(entry, args.queries, workdir)
 
-    # Step 9: archive into runs/<timestamp>
+    # Step 9: compact run-root outputs before archiving
+    print(f"\n→ Cleaning run-root intermediates")
+    cleanup_run_root(entry_dir, entry, args.queries, args.database, blast_type)
+
+    # Step 10: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_dir = archive_run(entry_dir, timestamp)
 
     print(f"\n{'='*50}")
     print(f"  Done.")
     print(f"{'='*50}")
-    print(f"  Alignment: {run_dir / f'{entry}.parse.merged.aligned.fa'}")
+    print(f"  Alignment: {run_dir / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / 'combinedtree.nwk'}")
     print(f"  Mapping:   {run_dir / 'merged_genome_mapping.txt'}")
-    print(f"  PDFs:      {run_dir / 'output' / ''}")
+    print(f"  Reports:   {run_dir}")
     subdir = f"runs/{timestamp}"
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")

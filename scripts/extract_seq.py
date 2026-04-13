@@ -4,10 +4,17 @@ Extract sequences from FASTA file based on a list of gene IDs.
 
 Usage:
   extract_seq.py <entry_dir> <gene> <list.csv> [aa_start] [aa_end]  - extract NT from .nt.parse.merged.fa
-  extract_seq.py <entry_dir> <gene> <list.csv> --aa [aa_start] [aa_end]  - extract AA from .parse.merged.clustal.fa
+  extract_seq.py <entry_dir> <gene> <list.csv> --aa [aa_start] [aa_end]  - extract AA from .parse.merged.aligned.fa
 """
 import argparse
+from pathlib import Path
 from Bio import SeqIO
+
+def existing_path(*candidates: Path) -> Path:
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
 def main():
     parser = argparse.ArgumentParser()
@@ -19,22 +26,31 @@ def main():
     parser.add_argument("aa_end", type=int, nargs='?')
     args = parser.parse_args()
 
+    entry_dir = Path(args.entry)
+    hits_dir = entry_dir / "hits"
+
     if args.aa:
-        fasta_path = f"{args.entry}/{args.gene}.parse.merged.aligned.fa"
+        fasta_path = existing_path(
+            entry_dir / f"{args.gene}.parse.merged.aligned.fa",
+            hits_dir / f"{args.gene}.parse.merged.aligned.fa",
+        )
         out_ext = ".aa.fa"
     else:
-        fasta_path = f"{args.entry}/{args.gene}.nt.parse.merged.fa"
+        fasta_path = existing_path(
+            entry_dir / f"{args.gene}.nt.parse.merged.fa",
+            hits_dir / f"{args.gene}.nt.parse.merged.fa",
+        )
         out_ext = ".cds.fa"
 
-    list_path = f"{args.entry}/output/{args.list}"
-    out_path = f"{args.entry}/output/{args.list}{out_ext}"
+    list_path = entry_dir / args.list
+    out_path = entry_dir / f"{args.list}{out_ext}"
 
     # Read gene IDs
     with open(list_path) as f:
         genes = [line.strip() for line in f if line.strip()]
 
     # Index FASTA for efficient lookup
-    seq_index = SeqIO.index(fasta_path, "fasta")
+    seq_index = SeqIO.index(str(fasta_path), "fasta")
 
     # Write matching records in order
     with open(out_path, "w") as out_f:

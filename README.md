@@ -42,12 +42,12 @@ Rscript visualize-tree.R -e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45
 
 The script ```tblastn-align-tree.sh``` creates a folder based on the first query sequence. An example output can be found in the subfolder ```/AT4G33430.1/```. It contains the outputs of blast searches against the three example genomes and biopython scripts to extract these sequences from the genome databases, parse fasta headers, and combine into a single fasta file ```AT4G33430.1.merged.fa```. The script then calls FastTree to generate ```AT4G33430.1.parse.merged.clustal.fa.nwk```
 
-The subfolder ```/AT4G33430.1/output``` contains the output from a second script, ```visualize-tree.r```, which is called by default from the main bash script. It contains the following:
+The run folder contains the output from a second script, ```visualize-tree.r```, which is called by default from the main bash script. It contains the following:
 1. Three PDFs. The main pdf ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.pdf``` contains a ggtree representation of the newick tree, with associated data
 2. ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv``` a list of parsed fasta headers from the search in the same order as the tree
 3. Various fasta files such as ```AT4G33430.1_TAIR10cds.fa_15_Pvul218cds.fa_15_Vung469cds.fa_15.csv.aa.fa``` with the sequences provided in the same order as the tree
 
-A second set of files in ```/AT4G33430.1/output``` contains the output from re-running ```visualize-tree.r``` a second time but with new options ```-e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45``` as specified above. The final tree PDF is below:
+A second set of files in the run folder contains the output from re-running ```visualize-tree.r``` a second time but with new options ```-e AT4G33430.1 -b SERK_tree -a AT5G10290 -n 45``` as specified above. The final tree PDF is below:
 
 ![](images/tree.png)
 
@@ -61,13 +61,13 @@ The code below calls the tblastn-align-tree.sh bash script to find 15 homologs o
 ```
 bash tblastn-align-tree.sh -q AT2G19590.1 -qdbs TAIR10cds.fa -n 15 15 15 -dbs TAIR10cds.fa Pvul218cds.fa Vung469cds.fa -hdr gene: polypeptide= locus= 
 ```
-This script will create a folder "AT2G19590.1" and populate a subfolder "output" with blast outputs, alignments, and tree visualizations in pdf format. 
+This script will create a folder "AT2G19590.1"; report files are written at the run root, while BLAST hit FASTAs and per-genome hit summaries are kept in "hits".
 
 A powerful feature of ggtree is the ability to plot associated data. The default PDF will include log2(fold-change) data from two RNAseq datasets from [Bjornsen et al. 2021](https://www.nature.com/articles/s41477-021-00874-5) (Arabidopsis) and [Steinbrenner et al. 2021](https://onlinelibrary.wiley.com/doi/10.1111/tpj.15732?af=R) (cowpea). 
 
 ![](images/ACO-tree-1.png)
 
-An alternative PDF with ".msa" appended will show a cartoon alignment. This is useful to show large differences in domain architecture between hits. You can explore the alignments in more detail by opening the .fasta files in the "output" folder
+An alternative PDF with ".msa" appended will show a cartoon alignment. This is useful to show large differences in domain architecture between hits. You can explore the alignments in more detail by opening the .fasta files in the run folder or the "hits" folder.
 
 ![](images/ACO-tree-2.png)
 

@@ -670,17 +670,14 @@ class GenomeSelectorApp:
             tk.Label(self.runs_inner, text=display_ts, anchor="w").grid(
                 row=i, column=1, padx=6, pady=1, sticky="w")
 
-            # Summarize contents from output/ subfolder
-            out_dir = path / "output"
-            contents = self._summarize_run(out_dir)
+            # Summarize report files from the run folder
+            contents = self._summarize_run(path)
             tk.Label(self.runs_inner, text=contents, anchor="w",
                      font=("TkDefaultFont", 8), fg="#555").grid(
                 row=i, column=2, padx=6, pady=1, sticky="w")
 
-            # Open the output/ subfolder (fall back to run dir if it doesn't exist)
-            target = out_dir if out_dir.is_dir() else path
-            ttk.Button(self.runs_inner, text="Open Output", width=11,
-                       command=lambda p=target: open_folder(p)).grid(
+            ttk.Button(self.runs_inner, text="Open Run", width=11,
+                       command=lambda p=path: open_folder(p)).grid(
                 row=i, column=3, padx=6, pady=1)
 
     @staticmethod

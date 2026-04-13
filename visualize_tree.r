@@ -69,7 +69,7 @@ option_list <- list(
 	make_option(c("-j", "--tree_type"), action="store", default=1, type="numeric",
         help="Specify a (1) plain tree, (2) heatmap (2), or (3) multiple sequence alignment"),
 	make_option(c("--features"),type = "character",default = NULL,
-		help = "Optional path to features.txt. If omitted, will try <entry>/output/features.txt. If missing/unreadable, feature overlay is skipped."),
+		help = "Optional path to features.txt. If omitted, will try <entry>/features.txt. If missing/unreadable, feature overlay is skipped."),
 	make_option(c("--subdir"),type = "character",default = NULL,
 		help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped."),
 	make_option(c("--dist_type"), action="store", type="character", default="patristic",
@@ -116,12 +116,12 @@ parse_genome_colors <- function(x) {
 }
 
 ###
-# Check for presence of features.txt in the output folder
+# Check for presence of features.txt in the run folder
 ###
 
 `%||%` <- function(a, b) if (!is.null(a) && nzchar(a)) a else b
 
-feature_file_default <- file.path(ENTRY_DIR, "output", "features.txt")
+feature_file_default <- file.path(ENTRY_DIR, "features.txt")
 feature_file <- opt$features %||% feature_file_default
 
 read_features_safe <- function(path) {
@@ -169,9 +169,9 @@ tree <- read.tree(tree_newick)
 gene_species_list <- paste(ENTRY_DIR,"/","merged_genome_mapping.txt", sep='')
 
 #define output filenames
-file <- paste(ENTRY_DIR,"/output/",opt$write,".pdf", sep='')
-file_csv <- paste(ENTRY_DIR,"/output/",opt$write,".csv", sep='')
-file_nwk <- paste(ENTRY_DIR,"/output/",opt$write,".nwk", sep='')
+file <- file.path(ENTRY_DIR, paste0(opt$write, ".pdf"))
+file_csv <- file.path(ENTRY_DIR, paste0(opt$write, ".csv"))
+file_nwk <- file.path(ENTRY_DIR, paste0(opt$write, ".nwk"))
 
 
 
@@ -231,8 +231,7 @@ long_nodes <- report_long_branches(
   internal_only = (as.integer(opt$include_tips) == 0)
 )
 
-out_csv_long <- file.path(ENTRY_DIR, "output",
-                          paste0(opt$write, ".long_branch_nodes.csv"))
+out_csv_long <- file.path(ENTRY_DIR, paste0(opt$write, ".long_branch_nodes.csv"))
 if (nrow(long_nodes)) {
   utils::write.table(long_nodes, out_csv_long, sep = ",", row.names = FALSE)
   message(sprintf("[long-branches] %d rows >= %.4g → %s",
@@ -458,9 +457,9 @@ opt$width <- max(p$data$x) + total_offset
 #Creates a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
-aa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.fa", sep='')
-msa_pre <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.no_all_gap_columns.fa", sep='')
-msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.no_all_gap_columns.ids_only.fa", sep='')
+aa <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.fa"))
+msa_pre <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.fa"))
+msa <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.ids_only.fa"))
 
 #trimal removes columns where every sequence is a gap, leaving within-sequence gaps intact for the MSA visualization
 system2("trimal", shQuote(c("-in", aa, "-out", msa_pre, "-noallgaps")), stdout = FALSE, stderr = FALSE)
@@ -550,8 +549,6 @@ if (has_features) {
 # This version reads unaligned positions and maps them to aligned MSA columns.
 # Requirements: Biostrings, ggnewscale (installed on demand below).
 
-feature_file <- file.path(ENTRY_DIR, "output", "features.txt")
-
 # 0) Read features (unaligned coordinates)
 feat <- utils::read.delim(feature_file, header = TRUE, sep = "\t",
                           stringsAsFactors = FALSE, check.names = FALSE, quote = "")
@@ -613,7 +610,7 @@ if (nrow(feat) == 0L) {
 } else {
 
 # ---- Export aligned coordinates for provenance --------------------------------
-aligned_out <- file.path(ENTRY_DIR, "output", paste(opt$write, "_features_aligned.txt", sep=" "))
+aligned_out <- file.path(ENTRY_DIR, paste0(opt$write, ".features_aligned.txt"))
 export_cols <- c("label", "feature",
                  "aa_start", "aa_end",           # original unaligned coords
                  "aa_start_col", "aa_end_col")   # aligned MSA columns
@@ -622,7 +619,7 @@ export_cols <- c("label", "feature",
 feat$len_aa_aligned <- feat$aa_end_col - feat$aa_start_col + 1L
 export_cols <- c(export_cols, "len_aa_aligned")
 
-# Ensure output dir exists
+# Ensure run dir exists
 dir.create(dirname(aligned_out), recursive = TRUE, showWarnings = FALSE)
 
 # Write tab-delimited, no quotes
@@ -779,7 +776,7 @@ dev.off()
 # Tree Version 4 --  nearest-by-genome distances 
 # Requires: tree (ape::phylo), dd with columns 'taxa' and 'genome',
 # p2 (your base tree with labels), msaplot inputs already prepared
-# Output:   <entry>/output/<write>.nearest.pdf
+# Output:   <entry>/<write>.nearest.pdf
 ###
 
 # Helper: compute a full pairwise distance matrix
@@ -901,8 +898,7 @@ nearest_df <- nearest_df[match(tip_order, nearest_df$label), , drop = FALSE]
 row.names(nearest_df) <- NULL
 
 # Write nearest-by-genome table to CSV (wide format)
-nearest_csv <- file.path(ENTRY_DIR, "output",
-                         paste0(opt$write, ".nearest_", tolower(opt$dist_type), ".csv"))
+nearest_csv <- file.path(ENTRY_DIR, paste0(opt$write, ".nearest_", tolower(opt$dist_type), ".csv"))
 dir.create(dirname(nearest_csv), recursive = TRUE, showWarnings = FALSE)
 utils::write.table(
   nearest_df,

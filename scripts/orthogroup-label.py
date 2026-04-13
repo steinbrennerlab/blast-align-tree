@@ -15,9 +15,9 @@ def main():
     args = parser.parse_args()
 
     cwd = os.getcwd()
-    og_dir = os.path.join(cwd, args.entry, "output", "Orthogroup_Sequences")
-    seq_list = os.path.join(cwd, args.entry, "output", args.list)
-    output = os.path.join(cwd, args.entry, "output", f"{args.list}.orthogroups.txt")
+    og_dir = os.path.join(cwd, args.entry, "hits", "Orthogroup_Sequences")
+    seq_list = os.path.join(cwd, args.entry, args.list)
+    output = os.path.join(cwd, args.entry, f"{args.list}.orthogroups.txt")
 
     # Read gene IDs
     with open(seq_list) as f:

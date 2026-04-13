@@ -8,6 +8,12 @@ import argparse
 import os
 from Bio import SeqIO
 
+def first_existing(*paths):
+    for path in paths:
+        if os.path.exists(path):
+            return path
+    return paths[0]
+
 def main():
     parser = argparse.ArgumentParser(description="Append a sequence to merged outputs")
     parser.add_argument("entry", help="Entry folder name")
@@ -16,12 +22,21 @@ def main():
     args = parser.parse_args()
 
     cwd = os.getcwd()
+    entry_dir = os.path.join(cwd, args.entry)
+    hits_dir = os.path.join(entry_dir, "hits")
     db_path = os.path.join(cwd, "genomes", args.database)
-    fa_out = os.path.join(cwd, args.entry, f"{args.entry}.parse.merged.fa")
-    coding_out = os.path.join(cwd, args.entry, "merged_coding.txt")
+    fa_out = first_existing(
+        os.path.join(entry_dir, f"{args.entry}.parse.merged.fa"),
+        os.path.join(hits_dir, f"{args.entry}.parse.merged.fa"),
+    )
+    coding_out = first_existing(
+        os.path.join(entry_dir, "merged_genome_mapping.txt"),
+        os.path.join(entry_dir, "merged_coding.txt"),
+    )
 
     for record in SeqIO.parse(db_path, "fasta"):
         if record.id == args.addseq:
+            os.makedirs(os.path.dirname(fa_out), exist_ok=True)
             with open(fa_out, "a") as fa:
                 fa.write(f">{record.id}\n{record.seq}\n")
             with open(coding_out, "a") as txt:
