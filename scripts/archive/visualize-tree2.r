@@ -230,10 +230,11 @@ if (opt$bootstrap_boolean > 0) {
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
 aa <- paste(opt$entry,"/output/",opt$write,".csv.aa.fa", sep='')
-msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
-msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
-#trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the next step
+msa_pre <- paste(opt$entry,"/output/",opt$write,".csv.aa.no_all_gap_columns.fa", sep='')
+msa <- paste(opt$entry,"/output/",opt$write,".csv.aa.no_all_gap_columns.ids_only.fa", sep='')
+#trimal removes columns where every sequence is a gap, leaving within-sequence gaps intact for the next step
 system(paste("trimal -in ",aa," -out ",msa_pre," -noallgaps",sep=""))
+# Keep only FASTA IDs in the cleaned alignment so tree labels and MSA labels match exactly
 system(paste("python scripts/remove_header.py ",msa_pre," ",msa,sep=""))
 
 #Set visualization parameters for heatmaps

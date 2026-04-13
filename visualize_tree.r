@@ -459,11 +459,12 @@ opt$width <- max(p$data$x) + total_offset
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
 aa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.fa", sep='')
-msa_pre <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.fa", sep='')
-msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.ungapped.headers.fa", sep='')
+msa_pre <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.no_all_gap_columns.fa", sep='')
+msa <- paste(ENTRY_DIR,"/output/",opt$write,".csv.aa.no_all_gap_columns.ids_only.fa", sep='')
 
-#trimal to trim alignment to an ungapped version -- this allows a subtree to become a comprehensible alignment for the MSA visualization
+#trimal removes columns where every sequence is a gap, leaving within-sequence gaps intact for the MSA visualization
 system2("trimal", shQuote(c("-in", aa, "-out", msa_pre, "-noallgaps")), stdout = FALSE, stderr = FALSE)
+# Keep only FASTA IDs in the cleaned alignment so tree labels and MSA labels match exactly
 system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/remove_header.py"), msa_pre, msa)), stdout = FALSE, stderr = FALSE)
 
 # Ensure MSA and tree tips match exactly (avoids msaplot crash from mismatches)
@@ -793,7 +794,7 @@ compute_distance_matrix <- function(dist_type = "patristic", tree, msa_path) {
     return(D)
   }
 
-  # phenetic = uncorrected p-distance on your trimmed ungapped AA alignment
+  # phenetic = uncorrected p-distance on the AA alignment after all-gap columns are removed
   if (!requireNamespace("Biostrings", quietly = TRUE)) BiocManager::install("Biostrings")
   aa <- Biostrings::readAAStringSet(msa_path)
   seqs <- setNames(as.character(aa), names(aa))
@@ -801,7 +802,7 @@ compute_distance_matrix <- function(dist_type = "patristic", tree, msa_path) {
   common <- intersect(tips, names(seqs))
   D <- matrix(NA_real_, length(tips), length(tips), dimnames = list(tips, tips))
 
-  # simple p-distance over equal-length ungapped AA strings
+  # simple p-distance over equal-length AA alignment strings
   get_pd <- function(a, b) {
     a <- strsplit(a, "", fixed = TRUE)[[1]]
     b <- strsplit(b, "", fixed = TRUE)[[1]]
