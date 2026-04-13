@@ -375,7 +375,8 @@ if (opt$genomeLabel_boolean > 0) {
 #converts "labels" bootstrap to a 1-100 integer
 d <- p$data
 d <- d[!d$isTip,]
-d$label <- as.integer(100*(as.numeric(d$label)))
+d$label <- as.numeric(as.character(d$label))
+d$label <- ifelse(d$label <= 1, as.integer(d$label * 100), as.integer(d$label))
 #option to only show some threshold bootstrap
 #d <- d[d$label < 75,]
 
@@ -383,7 +384,6 @@ d$label <- as.integer(100*(as.numeric(d$label)))
 if (opt$bootstrap_boolean > 0) {
 	p <- p + geom_text(data=d, aes(label=label), size=size, nudge_x=opt$bootstrap_offset)  #bootstraps
 }
-
 
 
 # Read all datasets in the /datasets folder
