@@ -323,9 +323,7 @@ class GenomeSelectorApp:
             "  |        `------ ATGCGTGC  D. melanogaster    /  _   B.A.T.  _  \\\n"
             "  |                                             /__/ \\_________/ \\__\\\n"
             "  `---.---------- ATGCATCC  A. thaliana            \\___     ___/\n"
-            "      `---------- ATGCGTCC  O. sativa                  \\___/\n"
-            "\n"
-            "  build the command, then run it in the environment you want"
+            "      `---------- ATGCGTCC  O. sativa                  \\___/"
         )
         tk.Label(self.root, text=banner, font=("Courier", 9), justify="left",
                  anchor="w", padx=12, pady=4).pack(fill="x")
@@ -333,7 +331,9 @@ class GenomeSelectorApp:
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
             f"Scanning genomes/ for FASTA files ({exts})\n"
-            "Select genomes, configure headers, and generate a blast_align_tree.py command."
+            "1. Select hit databases, set -hdr tokens, and fill in query IDs below.\n"
+            "2. Click 'Generate Command', then 'Copy to Clipboard'.\n"
+            "3. Paste and run the command in a terminal with your conda/mamba environment activated."
         )
         tk.Label(self.root, text=summary, font=("TkDefaultFont", 9),
                  justify="left", anchor="w", padx=12).pack(fill="x")
@@ -1019,7 +1019,6 @@ class GenomeSelectorApp:
             result = "python blast_align_tree.py " + result
         self._set_output(result)
         self.notebook.select(0)  # Switch to Command tab
-        print(result)
 
     def _copy_to_clipboard(self):
         text = self.output.get("1.0", "end-1c")
