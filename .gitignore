@@ -14,6 +14,9 @@
 !/images/**
 !/environments
 !/environments/**
+!/genomes
+!/genomes/animals
+!/genomes/animals/**
 
 # Don't ignore these specific folders but ignore their contents unless noted
 !/hmm_files
