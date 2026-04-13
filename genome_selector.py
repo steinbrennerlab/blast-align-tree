@@ -62,7 +62,7 @@ def dbtype_for(filepath: Path) -> str:
         return "prot"
     seq_chars: list[str] = []
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             in_seq = False
             for line in f:
                 if line.startswith(">"):
@@ -85,7 +85,7 @@ def get_example_id(filepath: Path, target: int = 500) -> str:
     first_id = None
     count = 0
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     count += 1
@@ -104,7 +104,7 @@ def get_example_header(filepath: Path, target: int = 500) -> str:
     first_hdr = None
     count = 0
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     count += 1
@@ -139,7 +139,7 @@ def parse_header_token(description: str, headerword: str, suffix: str = "") -> s
 def detect_header_tokens(filepath: Path) -> list[str]:
     """Read the first FASTA header line and extract candidate -hdr tokens."""
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     header = line[1:].strip()
@@ -189,7 +189,7 @@ def load_fasta_ids(filepath: Path) -> set[str]:
         return _id_cache[filepath]
     ids: set[str] = set()
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     ids.add(line[1:].split()[0])
@@ -323,9 +323,7 @@ class GenomeSelectorApp:
             "  |        `------ ATGCGTGC  D. melanogaster    /  _   B.A.T.  _  \\\n"
             "  |                                             /__/ \\_________/ \\__\\\n"
             "  `---.---------- ATGCATCC  A. thaliana            \\___     ___/\n"
-            "      `---------- ATGCGTCC  O. sativa                  \\___/\n"
-            "\n"
-            "  build the command, then run it in the environment you want"
+            "      `---------- ATGCGTCC  O. sativa                  \\___/"
         )
         tk.Label(self.root, text=banner, font=("Courier", 9), justify="left",
                  anchor="w", padx=12, pady=4).pack(fill="x")
@@ -333,7 +331,9 @@ class GenomeSelectorApp:
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
             f"Scanning genomes/ for FASTA files ({exts})\n"
-            "Select genomes, configure headers, and generate a blast_align_tree.py command."
+            "1. Select hit databases, set -hdr tokens, and fill in query IDs below.\n"
+            "2. Click 'Generate Command', then 'Copy to Clipboard'.\n"
+            "3. Paste and run the command in a terminal with your conda/mamba environment activated."
         )
         tk.Label(self.root, text=summary, font=("TkDefaultFont", 9),
                  justify="left", anchor="w", padx=12).pack(fill="x")
@@ -1019,7 +1019,6 @@ class GenomeSelectorApp:
             result = "python blast_align_tree.py " + result
         self._set_output(result)
         self.notebook.select(0)  # Switch to Command tab
-        print(result)
 
     def _copy_to_clipboard(self):
         text = self.output.get("1.0", "end-1c")

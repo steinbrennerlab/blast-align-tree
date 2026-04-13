@@ -6,7 +6,7 @@ Python rewrite of tblastn-align-tree.sh with all helper scripts inlined as funct
 - Replaces awk/xargs/sed with native Python
 - **All previous helper scripts (`extract_translate.py`, `translate_db.py`, `pull_id_fasta*.py`, `remove_stop.py`, `add_translations.py`) are now built-in**
 - Parallelizes (query, database) jobs
-- Requires: tblastn, blastp, blastdbcmd, clustalo, FastTree, Biopython
+- Requires selected BLAST/alignment/tree tools, Rscript/trimal, Biopython, and R packages; use --check-env to validate
 
 Usage example:
 python blast_align_tree.py   -q ENTRY Q2   -qdbs ENTRYDB.fa Q2DB.fa   -n 50 50   -hdr '>' 'gene='   -dbs Vung469.cds.fa TAIR10cds.fa   -add OUTGROUP1   -add_db OUTGROUP_DB.fa   -aa 10 200
@@ -25,8 +25,17 @@ import tempfile
 from datetime import datetime
 
 # Biopython
-from Bio import SeqIO
-from Bio.Seq import Seq, translate
+try:
+    import Bio
+    from Bio import SeqIO
+    from Bio.Seq import Seq, translate
+    BIO_IMPORT_ERROR = None
+except ImportError as exc:
+    Bio = None
+    SeqIO = None
+    Seq = None
+    translate = None
+    BIO_IMPORT_ERROR = exc
 
 # -----------------------
 # Utilities
@@ -948,6 +957,234 @@ def annotate_features(entry: str,
 
 
 # -----------------------
+# Environment checks
+# -----------------------
+
+REQUIRED_R_PACKAGES = [
+    "ggplot2",
+    "treeio",
+    "phytools",
+    "ggtree",
+    "optparse",
+    "tidytree",
+    "ape",
+    "broom",
+    "Biostrings",
+]
+
+
+def selected_external_tools(args: argparse.Namespace) -> list[str]:
+    tools = [
+        "blastdbcmd",
+        "Rscript",
+        "python",
+        "trimal",
+        "tblastn" if args.blast_type == "tblastn" else "blastp",
+    ]
+
+    if args.aligner == "clustalo":
+        tools.append("clustalo")
+    elif args.aligner == "mafft":
+        tools.append("mafft")
+
+    if args.tree_builder == "FastTree":
+        tools.append("FastTree")
+    elif args.tree_builder == "RAxML":
+        tools.append("raxml-ng")
+
+    if args.hmms:
+        tools.append("hmmscan")
+
+    return list(dict.fromkeys(tools))
+
+
+def _one_line(text: str) -> str:
+    return " ".join(text.strip().split())
+
+
+def active_env_roots() -> list[Path]:
+    roots = [Path(sys.prefix).resolve()]
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        roots.append(Path(conda_prefix).resolve())
+    return list(dict.fromkeys(roots))
+
+
+def _is_under_any_root(path: str, roots: list[Path]) -> bool:
+    exe = Path(path).resolve()
+    for root in roots:
+        try:
+            exe.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _format_roots(roots: list[Path]) -> str:
+    return "; ".join(str(root) for root in roots)
+
+
+def _check_path_python_biopython() -> tuple[bool, str]:
+    if shutil.which("python") is None:
+        return False, "python not found on PATH"
+
+    code = (
+        "import sys, Bio; "
+        "print(getattr(Bio, '__version__', 'unknown')); "
+        "print(sys.executable)"
+    )
+    result = subprocess.run(["python", "-c", code], text=True, capture_output=True)
+    if result.returncode == 0:
+        lines = result.stdout.splitlines()
+        version = lines[0] if lines else "unknown"
+        executable = lines[1] if len(lines) > 1 else "python"
+        return True, f"{version} ({executable})"
+
+    detail = _one_line(result.stderr or result.stdout)
+    return False, detail or "python could not import Bio"
+
+
+def _check_r_packages() -> tuple[bool, str]:
+    if shutil.which("Rscript") is None:
+        return False, "Rscript not found on PATH"
+
+    package_vector = ", ".join(f'"{pkg}"' for pkg in REQUIRED_R_PACKAGES)
+    expr = (
+        f"pkgs <- c({package_vector}); "
+        "missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; "
+        "if (length(missing)) { cat(paste(missing, collapse = '\\n')); quit(status = 1) }; "
+        "cat(paste(pkgs, collapse = ', '))"
+    )
+    result = subprocess.run(["Rscript", "-e", expr], text=True, capture_output=True)
+    if result.returncode == 0:
+        return True, _one_line(result.stdout)
+
+    missing = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if missing:
+        return False, "missing: " + ", ".join(missing)
+
+    detail = _one_line(result.stderr or result.stdout)
+    return False, detail or "R package check failed"
+
+
+def collect_environment_checks(args: argparse.Namespace) -> tuple[list[tuple[str, str, str]], list[str], list[str]]:
+    checks: list[tuple[str, str, str]] = []
+    missing: list[str] = []
+    warnings: list[str] = []
+    roots = active_env_roots()
+
+    def record(status: str, label: str, detail: str):
+        checks.append((status, label, detail))
+        if status == "MISSING":
+            missing.append(f"{label}: {detail}")
+        elif status == "WARN":
+            warnings.append(f"{label}: {detail}")
+
+    record("OK", "active env root", _format_roots(roots))
+    record("OK", "current Python", sys.executable)
+    if BIO_IMPORT_ERROR is None:
+        record("OK", "Biopython (current Python)", getattr(Bio, "__version__", "unknown"))
+    else:
+        record("MISSING", "Biopython (current Python)", str(BIO_IMPORT_ERROR))
+
+    for tool in selected_external_tools(args):
+        path = shutil.which(tool)
+        if path:
+            if _is_under_any_root(path, roots):
+                record("OK", f"tool {tool}", path)
+            else:
+                record(
+                    "WARN",
+                    f"tool {tool}",
+                    f"{path} (outside active env: {_format_roots(roots)})",
+                )
+        else:
+            record("MISSING", f"tool {tool}", "not found on PATH")
+
+    ok, detail = _check_path_python_biopython()
+    record("OK" if ok else "MISSING", "Biopython (PATH python)", detail)
+
+    ok, detail = _check_r_packages()
+    record("OK" if ok else "MISSING", "R packages", detail)
+
+    return checks, missing, warnings
+
+
+def print_environment_report(args: argparse.Namespace) -> int:
+    checks, missing, warnings = collect_environment_checks(args)
+
+    print("Environment check")
+    print("=================")
+    for status, label, detail in checks:
+        print(f"{status:<7} {label}: {detail}")
+
+    strict_failures = warnings if args.strict_env else []
+    if missing or strict_failures:
+        print("\nEnvironment check failed:")
+        for item in missing:
+            print(f"  - {item}")
+        for item in strict_failures:
+            print(f"  - strict-env violation: {item}")
+        return 1
+
+    if warnings:
+        print("\nEnvironment check passed with warnings:")
+        for item in warnings:
+            print(f"  - {item}")
+        print("Use --strict-env to treat these warnings as failures.")
+        return 0
+
+    print("\nEnvironment check passed.")
+    return 0
+
+
+def ensure_environment(args: argparse.Namespace):
+    _, missing, warnings = collect_environment_checks(args)
+    strict_failures = warnings if args.strict_env else []
+    if missing or strict_failures:
+        items = missing + [f"strict-env violation: {item}" for item in strict_failures]
+        lines = "\n".join(f"  - {item}" for item in items)
+        raise SystemExit(
+            "Environment check failed before running the pipeline:\n"
+            f"{lines}\n"
+            "Run with --check-env for the full report."
+        )
+
+
+def validate_pipeline_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str]:
+    required = [
+        ("queries", "-q/--queries"),
+        ("query_databases", "-qdbs/--query_databases"),
+        ("seqs", "-n/--seqs"),
+        ("header", "-hdr/--header"),
+        ("database", "-dbs/--database"),
+    ]
+    missing = [flag for attr, flag in required if getattr(args, attr) is None]
+    if missing:
+        parser.error(
+            "the following arguments are required for a pipeline run: "
+            + ", ".join(missing)
+        )
+
+    if len(args.query_databases) != len(args.queries):
+        parser.error("queries and query_databases lengths must match")
+    if len(args.seqs) != len(args.database):
+        parser.error("seqs (-n) must have same length as database (-dbs)")
+    if len(args.header) != len(args.database):
+        parser.error("header (-hdr) must have same length as database (-dbs)")
+    if args.add_seqs and (len(args.add_seqs) != len(args.add_dbs)):
+        parser.error("add_seqs and add_dbs must have the same length")
+
+    if args.header_suffix is not None:
+        if len(args.header_suffix) != len(args.database):
+            parser.error("header_suffix (-hdr_sfx) must have same length as database (-dbs)")
+        return [("" if s.lower() == "none" else s) for s in args.header_suffix]
+
+    return [""] * len(args.database)
+
+
+# -----------------------
 # Main
 # -----------------------
 
@@ -957,13 +1194,15 @@ def main():
     ap.add_argument("--aligner", choices=["clustalo", "mafft"], default="clustalo", help="Multiple sequence aligner to use (default=clustalo)")
     ap.add_argument("--mafft_mode", choices=["auto", "linsi", "einsi", "fftns2"], default="auto", help="MAFFT alignment strategy (default: auto)")
     ap.add_argument("--tree_builder", choices=["FastTree", "RAxML"], default="FastTree", help="Tree builder to use (default=FastTree)")
-    ap.add_argument("-q", "--queries", nargs="+", required=True, help="fasta ID for query sequences")
-    ap.add_argument("-qdbs", "--query_databases", nargs="+", required=True, help="fasta files containing the queries")
-    ap.add_argument("-n", "--seqs", nargs="+", required=True, help="-max_target_seqs per search database (align with -dbs)")
-    ap.add_argument("-hdr", "--header", nargs="+", required=True, help="header parsing rules per db (align with -dbs)")
+    ap.add_argument("--check-env", action="store_true", help="check selected Python, R, and external CLI dependencies, then exit")
+    ap.add_argument("--strict-env", action="store_true", help="treat tools found outside the active environment as failures")
+    ap.add_argument("-q", "--queries", nargs="+", help="fasta ID for query sequences")
+    ap.add_argument("-qdbs", "--query_databases", nargs="+", help="fasta files containing the queries")
+    ap.add_argument("-n", "--seqs", nargs="+", help="-max_target_seqs per search database (align with -dbs)")
+    ap.add_argument("-hdr", "--header", nargs="+", help="header parsing rules per db (align with -dbs)")
     ap.add_argument("-hdr_sfx", "--header_suffix", nargs="+", default=None,
                     help="suffix to trim from parsed header tokens, per db (use 'none' for no trimming)")
-    ap.add_argument("-dbs", "--database", nargs="+", required=True, help="blast databases to search (filenames or subfolder paths under ./genomes)")
+    ap.add_argument("-dbs", "--database", nargs="+", help="blast databases to search (filenames or subfolder paths under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
     ap.add_argument("-aa", "--slice", nargs="*", default=[], help="AA slice start end, optional")
@@ -986,29 +1225,11 @@ def main():
     args = ap.parse_args()
     blast_type = args.blast_type
 
-    # Sanity checks
-    if len(args.query_databases) != len(args.queries):
-        raise SystemExit("queries and query_databases lengths must match")
-    if len(args.seqs) != len(args.database):
-        raise SystemExit("seqs (-n) must have same length as database (-dbs)")
-    if len(args.header) != len(args.database):
-        raise SystemExit("header (-hdr) must have same length as database (-dbs)")
-    if args.add_seqs and (len(args.add_seqs) != len(args.add_dbs)):
-        raise SystemExit("add_seqs and add_dbs must have the same length")
+    if args.check_env:
+        raise SystemExit(print_environment_report(args))
 
-    # Header suffix: default to no trimming; validate length matches -dbs
-    if args.header_suffix is not None:
-        if len(args.header_suffix) != len(args.database):
-            raise SystemExit("header_suffix (-hdr_sfx) must have same length as database (-dbs)")
-        header_suffixes = [("" if s.lower() == "none" else s) for s in args.header_suffix]
-    else:
-        header_suffixes = [""] * len(args.database)
-
-    # External tool checks
-    for tool in (["tblastn"] if blast_type == "tblastn" else ["blastp"]):
-        check_tool(tool)
-    for tool in ["blastdbcmd", "clustalo", "FastTree"]:
-        check_tool(tool)
+    header_suffixes = validate_pipeline_args(args, ap)
+    ensure_environment(args)
 
     workdir = Path(args.workdir).resolve()
     entry = args.queries[0]
