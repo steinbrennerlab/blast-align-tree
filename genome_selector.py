@@ -62,7 +62,7 @@ def dbtype_for(filepath: Path) -> str:
         return "prot"
     seq_chars: list[str] = []
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             in_seq = False
             for line in f:
                 if line.startswith(">"):
@@ -85,7 +85,7 @@ def get_example_id(filepath: Path, target: int = 500) -> str:
     first_id = None
     count = 0
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     count += 1
@@ -104,7 +104,7 @@ def get_example_header(filepath: Path, target: int = 500) -> str:
     first_hdr = None
     count = 0
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     count += 1
@@ -139,7 +139,7 @@ def parse_header_token(description: str, headerword: str, suffix: str = "") -> s
 def detect_header_tokens(filepath: Path) -> list[str]:
     """Read the first FASTA header line and extract candidate -hdr tokens."""
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     header = line[1:].strip()
@@ -189,7 +189,7 @@ def load_fasta_ids(filepath: Path) -> set[str]:
         return _id_cache[filepath]
     ids: set[str] = set()
     try:
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith(">"):
                     ids.add(line[1:].split()[0])
