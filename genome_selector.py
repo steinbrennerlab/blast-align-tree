@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """
-BAT Genome Selector — tkinter GUI for building and running blast_align_tree.py.
+BAT Genome Selector — tkinter GUI for building blast_align_tree.py commands.
 
 Scans genomes/ for *.fa and *.fna files, auto-detects header tokens from the
 first FASTA record, and generates copy-paste-ready -dbs / -hdr / -n arguments.
-Can also run the pipeline directly with real-time output streaming.
 """
 
+import argparse
 import os
 import platform
-import queue
 import shutil
 import random
 import re
-import signal
 import subprocess
-import sys
-import threading
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
@@ -31,8 +27,25 @@ BLAST_INDEX_EXTS = {".ndb", ".nhr", ".nin", ".njs", ".nog", ".nos", ".not",
                     ".pog", ".pos", ".pot", ".psq", ".ptf", ".pto"}
 MAX_LABEL_LEN = 40
 DEFAULT_N = 15
+MIN_N = 1
+MAX_N = 999
+DIVIDER_COL = 3
+DIVIDER_COL_WIDTH = 12
 # Cache of FASTA record IDs per genome file {filepath: set_of_ids}
 _id_cache: dict[Path, set[str]] = {}
+
+
+def positive_int(value: str) -> int:
+    """Parse a positive integer for CLI options."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed < MIN_N:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    if parsed > MAX_N:
+        raise argparse.ArgumentTypeError(f"must be {MAX_N} or less")
+    return parsed
 
 
 def has_blastdb(filepath: Path) -> bool:
@@ -271,14 +284,12 @@ class ToolTip:
 
 
 class GenomeSelectorApp:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, default_n: int = DEFAULT_N):
         self.root = root
         root.title("BAT Genome Selector")
         root.minsize(1050, 600)
 
-        self.proc = None          # subprocess.Popen when pipeline is running
-        self.output_queue = queue.Queue()
-        self._polling = False
+        self.default_n = default_n
 
         self._build_banner()
         self._build_genome_table()
@@ -305,14 +316,16 @@ class GenomeSelectorApp:
     # ------------------------------------------------------------------
     def _build_banner(self):
         banner = (
-            "            ,---ATGCATGC-- H. sapiens           /\\    /\\\n"
-            "        ,---|                                   /  \\__/  \\\n"
-            "    ,---|   `---ATGCGTGC-- D. melanogaster    /  __  __  \\\n"
-            "  --|       ,---ATGCATCC-- A. thaliana        | /  \\/  \\ |\n"
-            "    `-------|                                  |/ B.A.T. \\|\n"
-            "            `---ATGCGTCC-- O. sativa           \\________/\n"
+            "  B.A.T.  BLAST - ALIGN - TREE\n"
+            "  ---------------------------------------------------------------\n"
+            "      .---------------- ATGCATGC  H. sapiens        /\\       /\\\n"
+            "  .---+----.                                      __/  \\_____/  \\__\n"
+            "  |        `------ ATGCGTGC  D. melanogaster    /  _   B.A.T.  _  \\\n"
+            "  |                                             /__/ \\_________/ \\__\\\n"
+            "  `---.---------- ATGCATCC  A. thaliana            \\___     ___/\n"
+            "      `---------- ATGCGTCC  O. sativa                  \\___/\n"
             "\n"
-            "     B L A S T  -  A L I G N  -  T R E E"
+            "  build the command, then run it in the environment you want"
         )
         tk.Label(self.root, text=banner, font=("Courier", 9), justify="left",
                  anchor="w", padx=12, pady=4).pack(fill="x")
@@ -320,7 +333,7 @@ class GenomeSelectorApp:
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
             f"Scanning genomes/ for FASTA files ({exts})\n"
-            "Select genomes, configure headers, and generate or run a blast_align_tree.py command."
+            "Select genomes, configure headers, and generate a blast_align_tree.py command."
         )
         tk.Label(self.root, text=summary, font=("TkDefaultFont", 9),
                  justify="left", anchor="w", padx=12).pack(fill="x")
@@ -334,22 +347,23 @@ class GenomeSelectorApp:
         header_frame.pack(fill="x", padx=8, pady=(8, 0))
 
         # Section headings (row 0)
-        # "Query" spans cols 0-3, separator at col 4, "Database Settings" spans cols 5-10
+        # "Query" spans cols 0-2, separator at col 3, "Database Settings" spans cols 4-10
         query_heading = tk.Label(header_frame, text="Query",
                                  font=("TkDefaultFont", 9, "bold", "italic"),
                                  fg="#444")
-        query_heading.grid(row=0, column=2, columnspan=2, sticky="ew", padx=4)
+        query_heading.grid(row=0, column=0, columnspan=3, sticky="ew", padx=4)
         db_heading = tk.Label(header_frame, text="Database Settings",
                               font=("TkDefaultFont", 9, "bold", "italic"),
                               fg="#444")
-        db_heading.grid(row=0, column=5, columnspan=6, sticky="ew", padx=4)
+        db_heading.grid(row=0, column=4, columnspan=7, sticky="ew", padx=4)
 
-        # Column headers (row 1) — col 4 reserved for vertical divider
+        # Column headers (row 1) - col 3 reserved for vertical divider
         for col, (text, px) in [
-            (0, ("Include", (4, 2))),  (1, ("Genome file", 4)),
-            (2, ("Ex.", 2)),           (3, ("-q (queries)", 4)),
-            # col 4 = divider
-            (5, ("-hdr", 4)),          (6, ("Parsed name", 4)),
+            (0, ("Genome file", 4)),   (1, ("Ex.", 2)),
+            (2, ("-q (queries)", 4)),
+            # col 3 = divider
+            (4, ("Include", (4, 2))),  (5, ("-hdr", 4)),
+            (6, ("Parsed name", 4)),
             (7, ("-hdr_sfx", 4)),
             (8, ("-n", 4)),            (9, ("Type", 4)),
             (10, ("DB", 4)),
@@ -359,8 +373,9 @@ class GenomeSelectorApp:
             lbl.grid(row=1, column=col, padx=px, sticky="ew")
 
         # Vertical divider between query and database sections
+        header_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
         ttk.Separator(header_frame, orient="vertical").grid(
-            row=0, column=4, rowspan=2, sticky="ns", padx=4)
+            row=0, column=DIVIDER_COL, rowspan=2, sticky="ns")
 
         # Scrollable genome list
         list_frame = tk.Frame(self.root)
@@ -369,6 +384,7 @@ class GenomeSelectorApp:
         self.canvas = canvas = tk.Canvas(list_frame, highlightthickness=0)
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
         self.inner_frame = tk.Frame(canvas)
+        self.inner_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
 
         self.inner_frame.bind(
             "<Configure>",
@@ -404,23 +420,35 @@ class GenomeSelectorApp:
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill="x", padx=8, pady=4)
 
-        ttk.Button(btn_frame, text="Select All",
+        ttk.Button(btn_frame, text="Select All Hits",
                    command=self._select_all).pack(side="left", padx=(0, 4))
-        ttk.Button(btn_frame, text="Deselect All",
+        ttk.Button(btn_frame, text="Deselect All Hits",
                    command=self._deselect_all).pack(side="left", padx=(0, 4))
         ttk.Button(btn_frame, text="Clear Fields",
                    command=self._clear_fields).pack(side="left", padx=(0, 4))
         ttk.Button(btn_frame, text="Refresh",
-                   command=self._refresh).pack(side="left")
+                   command=self._refresh).pack(side="left", padx=(0, 8))
 
-        # Selected genomes display
-        self.selected_label = tk.Label(self.root, text="Selected: (none)",
+        ttk.Separator(btn_frame, orient="vertical").pack(side="left", fill="y", padx=(0, 8))
+        tk.Label(btn_frame, text="Default -n:").pack(side="left")
+        self.default_n_var = tk.StringVar(value=str(self.default_n))
+        default_n_spin = ttk.Spinbox(btn_frame, textvariable=self.default_n_var,
+                                     from_=MIN_N, to=MAX_N, width=5,
+                                     command=self._set_default_n)
+        default_n_spin.pack(side="left", padx=(2, 4))
+        default_n_spin.bind("<Return>", lambda _e: self._set_default_n())
+        ToolTip(default_n_spin, "Default number of hits for new rows and Clear Fields")
+        ttk.Button(btn_frame, text="Set All -n",
+                   command=self._set_all_n).pack(side="left")
+
+        # Selected hit databases display
+        self.selected_label = tk.Label(self.root, text="Hit DBs: (none)",
                                        font=("TkDefaultFont", 9), anchor="w",
                                        justify="left", wraplength=1000)
         self.selected_label.pack(fill="x", padx=12, pady=(0, 4))
 
     # ------------------------------------------------------------------
-    # Pipeline options (aligner, tree, blast_type, threads)
+    # Command options (aligner, tree, blast_type, threads)
     # ------------------------------------------------------------------
     def _build_options_panel(self):
         opt_frame = tk.Frame(self.root)
@@ -545,7 +573,7 @@ class GenomeSelectorApp:
             self._adv_visible.set(True)
 
     # ------------------------------------------------------------------
-    # Action buttons (Generate, Copy, Run, Cancel)
+    # Action buttons (Generate, Copy)
     # ------------------------------------------------------------------
     def _build_action_buttons(self):
         gen_frame = tk.Frame(self.root)
@@ -554,28 +582,17 @@ class GenomeSelectorApp:
         self.prepend_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(gen_frame, text="Prepend  python blast_align_tree.py",
                         variable=self.prepend_var).pack(side="left", padx=(0, 8))
-        ttk.Button(gen_frame, text="Generate Command",
-                   command=self._generate).pack(side="left", padx=(0, 4))
+        tk.Button(gen_frame, text="Generate Command",
+                  command=self._generate,
+                  font=("TkDefaultFont", 9, "bold"),
+                  bg="#ffd166", activebackground="#f4b942",
+                  fg="#111111", activeforeground="#111111",
+                  relief="raised", borderwidth=2).pack(side="left", padx=(0, 4))
         ttk.Button(gen_frame, text="Copy to Clipboard",
                    command=self._copy_to_clipboard).pack(side="left", padx=(0, 4))
 
-        ttk.Separator(gen_frame, orient="vertical").pack(side="left", fill="y", padx=8)
-
-        self.run_btn = ttk.Button(gen_frame, text="Run Pipeline",
-                                  command=self._run_pipeline)
-        self.run_btn.pack(side="left", padx=(0, 4))
-
-        self.cancel_btn = ttk.Button(gen_frame, text="Cancel",
-                                     command=self._cancel_pipeline, state="disabled")
-        self.cancel_btn.pack(side="left", padx=(0, 8))
-
-        self.status_var = tk.StringVar(value="")
-        self.status_label = tk.Label(gen_frame, textvariable=self.status_var,
-                                     font=("TkDefaultFont", 9, "bold"), anchor="w")
-        self.status_label.pack(side="left")
-
     # ------------------------------------------------------------------
-    # Output panel (tabbed: Command | Pipeline Output)
+    # Output panel (tabbed: Command | Recent Runs)
     # ------------------------------------------------------------------
     def _build_output_panel(self):
         self.notebook = ttk.Notebook(self.root)
@@ -589,18 +606,6 @@ class GenomeSelectorApp:
                          ("c", "a") or not (e.state & 0x4) else None)
         self.output.pack(fill="both", expand=True)
         self.notebook.add(cmd_frame, text="Command")
-
-        # Pipeline Output tab
-        pipe_frame = tk.Frame(self.notebook)
-        self.pipe_output = tk.Text(pipe_frame, wrap="word", state="disabled",
-                                   font=("Courier", 9), bg="#1e1e1e", fg="#d4d4d4",
-                                   insertbackground="#d4d4d4")
-        pipe_scroll = ttk.Scrollbar(pipe_frame, orient="vertical",
-                                    command=self.pipe_output.yview)
-        self.pipe_output.configure(yscrollcommand=pipe_scroll.set)
-        self.pipe_output.pack(side="left", fill="both", expand=True)
-        pipe_scroll.pack(side="right", fill="y")
-        self.notebook.add(pipe_frame, text="Pipeline Output")
 
         # Recent Runs tab
         self._build_recent_runs_tab()
@@ -704,6 +709,8 @@ class GenomeSelectorApp:
     def _sync_columns(self):
         """Match header_frame column widths to inner_frame data columns."""
         for col in range(self.inner_frame.grid_size()[0]):
+            if col == DIVIDER_COL:
+                continue
             try:
                 slaves = self.inner_frame.grid_slaves(row=0, column=col)
                 if slaves:
@@ -711,8 +718,9 @@ class GenomeSelectorApp:
                     self.header_frame.columnconfigure(col, minsize=w)
             except (tk.TclError, IndexError):
                 pass
-        # Don't let the divider column (4) expand
-        self.header_frame.columnconfigure(4, minsize=0, weight=0)
+        # Keep the divider column fixed in both frames so the vertical rules align.
+        self.header_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
+        self.inner_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
 
     # ------------------------------------------------------------------
     # Genome rows
@@ -732,33 +740,33 @@ class GenomeSelectorApp:
             chk_var = tk.BooleanVar(value=False)
             hdr_var = tk.StringVar(value=default_hdr)
             sfx_var = tk.StringVar(value="none")
-            n_var = tk.StringVar(value=str(DEFAULT_N))
+            n_var = tk.StringVar(value=str(self.default_n))
             q_var = tk.StringVar(value="")
             example_header = get_example_header(gpath)
             preview_var = tk.StringVar(
                 value=parse_header_token(example_header, default_hdr, sfx_var.get()))
 
-            ttk.Checkbutton(self.inner_frame, variable=chk_var).grid(
-                row=i, column=0, padx=(4, 2))
-
             rel = gpath.relative_to(GENOMES_DIR).as_posix()
             display_name = truncate_name(rel)
             lbl = tk.Label(self.inner_frame, text=display_name, anchor="w")
-            lbl.grid(row=i, column=1, sticky="w", padx=4)
+            lbl.grid(row=i, column=0, sticky="w", padx=4)
             if len(rel) > MAX_LABEL_LEN:
                 ToolTip(lbl, rel)
 
             ttk.Button(
                 self.inner_frame, text="Ex.", width=3,
-                command=lambda cv=chk_var, qv=q_var, gp=gpath: self._fill_example(cv, qv, gp)
-            ).grid(row=i, column=2, padx=2, pady=1)
+                command=lambda qv=q_var, gp=gpath: self._fill_example(qv, gp)
+            ).grid(row=i, column=1, padx=2, pady=1)
 
             ttk.Entry(self.inner_frame, textvariable=q_var, width=20).grid(
-                row=i, column=3, sticky="w", padx=4, pady=1)
+                row=i, column=2, sticky="w", padx=4, pady=1)
 
             # Vertical divider between query and database sections
             ttk.Separator(self.inner_frame, orient="vertical").grid(
-                row=i, column=4, sticky="ns", padx=4)
+                row=i, column=DIVIDER_COL, sticky="ns")
+
+            ttk.Checkbutton(self.inner_frame, variable=chk_var).grid(
+                row=i, column=4, padx=(4, 2))
 
             ttk.Combobox(self.inner_frame, textvariable=hdr_var,
                          values=tokens, width=18).grid(
@@ -779,7 +787,7 @@ class GenomeSelectorApp:
                 row=i, column=7, padx=4, pady=1)
 
             ttk.Spinbox(self.inner_frame, textvariable=n_var,
-                        from_=1, to=999, width=5).grid(
+                        from_=MIN_N, to=MAX_N, width=5).grid(
                 row=i, column=8, padx=4, pady=1)
 
             tk.Label(self.inner_frame, text=dbtype_for(gpath)).grid(
@@ -805,11 +813,31 @@ class GenomeSelectorApp:
                  if chk_var.get()]
         if names:
             self.selected_label.configure(
-                text=f"Selected ({len(names)}): " + ", ".join(names))
+                text=f"Hit DBs ({len(names)}): " + ", ".join(names))
         else:
-            self.selected_label.configure(text="Selected: (none)")
+            self.selected_label.configure(text="Hit DBs: (none)")
+
+    def _set_default_n(self) -> int | None:
+        raw = self.default_n_var.get().strip()
+        try:
+            self.default_n = positive_int(raw)
+        except argparse.ArgumentTypeError as exc:
+            self.default_n_var.set(str(self.default_n))
+            self._set_output(f"Default -n {exc}.")
+            return None
+        self.default_n_var.set(str(self.default_n))
+        return self.default_n
+
+    def _set_all_n(self):
+        default_n = self._set_default_n()
+        if default_n is None:
+            return
+        for _chk_var, _hdr_var, _sfx_var, n_var, _q_var, _gpath, _name in self.rows:
+            n_var.set(str(default_n))
 
     def _refresh(self):
+        if hasattr(self, "default_n_var"):
+            self._set_default_n()
         _id_cache.clear()
         for widget in self.inner_frame.winfo_children():
             widget.destroy()
@@ -826,8 +854,7 @@ class GenomeSelectorApp:
         for chk_var, *_ in self.rows:
             chk_var.set(False)
 
-    def _fill_example(self, chk_var: tk.BooleanVar, q_var: tk.StringVar, gpath: Path):
-        chk_var.set(True)
+    def _fill_example(self, q_var: tk.StringVar, gpath: Path):
         ids = load_fasta_ids(gpath)
         if ids:
             q_var.set(random.choice(list(ids)))
@@ -841,10 +868,13 @@ class GenomeSelectorApp:
         self.root.clipboard_append(cmd)
 
     def _clear_fields(self):
+        default_n = self._set_default_n()
+        if default_n is None:
+            return
         for chk_var, hdr_var, sfx_var, n_var, q_var, gpath, name in self.rows:
             q_var.set("")
             sfx_var.set("none")
-            n_var.set(str(DEFAULT_N))
+            n_var.set(str(default_n))
 
     # ------------------------------------------------------------------
     # Command generation
@@ -855,21 +885,34 @@ class GenomeSelectorApp:
 
     def _build_args(self) -> list[str] | None:
         """Build the argument list for blast_align_tree.py. Returns None on error."""
-        selected = [
-            (name, hdr_var.get(), sfx_var.get().strip(), n_var.get(),
-             self._parse_queries(q_var.get()), gpath)
-            for chk_var, hdr_var, sfx_var, n_var, q_var, gpath, name in self.rows
-            if chk_var.get()
-        ]
-        if not selected:
-            self._set_output("No genomes selected.")
+        hit_dbs = []
+        query_rows = []
+        for chk_var, hdr_var, sfx_var, n_var, q_var, gpath, name in self.rows:
+            if chk_var.get():
+                hit_dbs.append((name, hdr_var.get(), sfx_var.get().strip(),
+                                n_var.get(), gpath))
+            queries = self._parse_queries(q_var.get())
+            if queries:
+                query_rows.append((name, queries, gpath))
+
+        if not hit_dbs:
+            self._set_output("No hit databases selected.")
+            return None
+
+        selected_dbtypes: dict[str, list[str]] = {}
+        for name, _hdr, _sfx, _n, gpath in hit_dbs:
+            selected_dbtypes.setdefault(dbtype_for(gpath), []).append(name)
+        if len(selected_dbtypes) > 1:
+            labels = {"nucl": "nucleotide", "prot": "protein"}
+            lines = ["Error: Cannot mix nucleotide and protein databases as hit selections."]
+            for dbtype, names in sorted(selected_dbtypes.items()):
+                lines.append(f"  {labels.get(dbtype, dbtype)}: {', '.join(names)}")
+            self._set_output("\n".join(lines))
             return None
 
         # Validate query IDs exist in their genome files
         errors = []
-        for name, _hdr, _sfx, _n, queries, gpath in selected:
-            if not queries:
-                continue
+        for name, queries, gpath in query_rows:
             ids = load_fasta_ids(gpath)
             for q in queries:
                 if q not in ids:
@@ -879,23 +922,22 @@ class GenomeSelectorApp:
             return None
 
         # Check at least one query is provided
-        has_queries = any(queries for _, _, _, _, queries, _ in selected)
-        if not has_queries:
-            self._set_output("Error: At least one genome must have a query (-q) specified.")
+        if not query_rows:
+            self._set_output("Error: At least one query (-q) must be specified.")
             return None
 
         # Collect -q / -qdbs pairs
         all_queries = []
         all_qdbs = []
-        for name, _hdr, _sfx, _n, queries, _gpath in selected:
+        for name, queries, _gpath in query_rows:
             for q in queries:
                 all_queries.append(q)
                 all_qdbs.append(name)
 
-        dbs = [s[0] for s in selected]
-        hdrs = [s[1] for s in selected]
-        sfxs = [s[2] or "none" for s in selected]
-        ns = [s[3] for s in selected]
+        dbs = [s[0] for s in hit_dbs]
+        hdrs = [s[1] for s in hit_dbs]
+        sfxs = [s[2] or "none" for s in hit_dbs]
+        ns = [s[3] for s in hit_dbs]
 
         has_suffix = any(s != "none" for s in sfxs)
 
@@ -993,152 +1035,24 @@ class GenomeSelectorApp:
         self.output.delete("1.0", "end")
         self.output.insert("1.0", text)
 
-    # ------------------------------------------------------------------
-    # Pipeline execution
-    # ------------------------------------------------------------------
-    def _run_pipeline(self):
-        """Launch blast_align_tree.py as a subprocess with live output."""
-        if self.proc is not None:
-            return  # Already running
 
-        parts = self._build_args()
-        if parts is None:
-            return
-
-        # Always include threads for the subprocess run
-        if "--threads" not in parts:
-            parts.extend(["--threads", self.threads_var.get().strip()])
-
-        # Build the full command
-        cmd = [sys.executable, "-u", "blast_align_tree.py"] + parts
-
-        # Show what we're running in the Command tab
-        self._set_output("python blast_align_tree.py " + " ".join(parts))
-
-        # Clear pipeline output and switch to that tab
-        self.pipe_output.configure(state="normal")
-        self.pipe_output.delete("1.0", "end")
-        self.pipe_output.configure(state="disabled")
-        self.notebook.select(1)  # Switch to Pipeline Output tab
-
-        # Update UI state
-        self.run_btn.configure(state="disabled")
-        self.cancel_btn.configure(state="normal")
-        self._set_status("Running...", "blue")
-
-        # Launch subprocess (new process group so we can kill the whole tree)
-        try:
-            kwargs = {}
-            if sys.platform != "win32":
-                kwargs["preexec_fn"] = os.setsid
-            self.proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                cwd=str(Path(__file__).parent),
-                **kwargs,
-            )
-        except Exception as e:
-            self._append_pipe_output(f"Failed to start pipeline: {e}\n")
-            self._on_pipeline_done(-1)
-            return
-
-        # Start background reader thread
-        self._reader_thread = threading.Thread(
-            target=self._read_output, daemon=True)
-        self._reader_thread.start()
-
-        # Start polling the queue
-        self._polling = True
-        self._poll_output()
-
-    def _read_output(self):
-        """Background thread: read subprocess stdout line by line into queue."""
-        try:
-            for line in self.proc.stdout:
-                self.output_queue.put(line)
-        except ValueError:
-            pass  # stdout closed
-        finally:
-            self.output_queue.put(None)  # Sentinel: done reading
-
-    def _poll_output(self):
-        """Drain the output queue into the Text widget (runs on main thread)."""
-        try:
-            while True:
-                line = self.output_queue.get_nowait()
-                if line is None:
-                    # Reader finished — get return code
-                    retcode = self.proc.wait()
-                    self._on_pipeline_done(retcode)
-                    return
-                self._append_pipe_output(line)
-        except queue.Empty:
-            pass
-
-        if self._polling:
-            self.root.after(100, self._poll_output)
-
-    def _append_pipe_output(self, text: str):
-        """Append text to the pipeline output widget and auto-scroll."""
-        self.pipe_output.configure(state="normal")
-        self.pipe_output.insert("end", text)
-        self.pipe_output.see("end")
-        self.pipe_output.configure(state="disabled")
-
-    def _cancel_pipeline(self):
-        """Kill the running subprocess."""
-        if self.proc is None:
-            return
-        self._set_status("Cancelling...", "orange")
-        try:
-            if sys.platform == "win32":
-                self.proc.terminate()
-            else:
-                os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, OSError):
-            pass
-        # If still alive after a moment, force kill
-        self.root.after(2000, self._force_kill)
-
-    def _force_kill(self):
-        if self.proc is not None and self.proc.poll() is None:
-            try:
-                if sys.platform == "win32":
-                    self.proc.kill()
-                else:
-                    os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
-            except (ProcessLookupError, OSError):
-                pass
-
-    def _on_pipeline_done(self, retcode: int):
-        """Clean up after pipeline finishes."""
-        self._polling = False
-        self.proc = None
-        self.run_btn.configure(state="normal")
-        self.cancel_btn.configure(state="disabled")
-
-        if retcode == 0:
-            self._set_status("Completed successfully", "green")
-            self._append_pipe_output("\n--- Pipeline completed successfully ---\n")
-            self._refresh_runs()
-        elif retcode == -signal.SIGTERM or retcode == -signal.SIGKILL:
-            self._set_status("Cancelled", "orange")
-            self._append_pipe_output("\n--- Pipeline cancelled ---\n")
-        else:
-            self._set_status(f"Failed (exit code {retcode})", "red")
-            self._append_pipe_output(f"\n--- Pipeline failed (exit code {retcode}) ---\n")
-
-    def _set_status(self, text: str, color: str):
-        self.status_var.set(text)
-        self.status_label.configure(fg=color)
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Tkinter GUI for building blast_align_tree.py commands."
+    )
+    parser.add_argument(
+        "--default-n",
+        type=positive_int,
+        default=DEFAULT_N,
+        help=f"default number of BLAST hits per selected genome (default: {DEFAULT_N})",
+    )
+    return parser.parse_args(argv)
 
 
-def main():
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
     root = tk.Tk()
-    GenomeSelectorApp(root)
+    GenomeSelectorApp(root, default_n=args.default_n)
     root.mainloop()
 
 
