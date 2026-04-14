@@ -58,6 +58,8 @@ option_list <- list(
         help="heatmap_width"),
 	make_option(c("-p", "--heatmap_offset"), action="store", default=2.0, type="numeric",
         help="heatmap_offset"),
+	make_option(c("--heatmap_file"), action="store", type="character", default="datasets/klepikova_atlas_subset.tsv",
+        help="Path to the dataset file used for the heatmap tree (default: datasets/klepikova_atlas_subset.tsv)"),
 	make_option(c("-z", "--size"), action="store", default=1, type="numeric",
         help="size of font"),
 	make_option(c("-l", "--labels_boolean"), action="store", default=1, type="numeric",
@@ -450,14 +452,47 @@ dev.off()
 
 #Set visualization parameters for heatmaps
 ##heatmap colors and limits
-upper <- 7 #these are the upper and lower limits used to set colors. If outside the limits cell is gray
-lower <- -7
-low_color<-"#000099" #blue
-high_color<-"#FF0000" #red
+# The scale type is auto-detected from the data:
+#   - If any negative values exist   -> diverging scale (blue-white-red, symmetric around 0)
+#                                       suits fold-change data (e.g., Bjornsen PAMP L2FC)
+#   - If all values are non-negative -> sequential scale (white-red, 0 to max)
+#                                       suits absolute expression (e.g., Klepikova log2 counts)
+# No user configuration required. Drop in any BAT-format TSV and the heatmap will adapt.
 
-heatmap_file <- read.table("datasets/bjornsen_pamps_l2FC.txt", sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+heatmap_file <- read.table(opt$heatmap_file, sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+
+# Inspect data to choose scale type
+.numeric_vals <- suppressWarnings(as.numeric(unlist(heatmap_file)))
+.numeric_vals <- .numeric_vals[is.finite(.numeric_vals)]
+data_min <- if (length(.numeric_vals)) min(.numeric_vals) else 0
+data_max <- if (length(.numeric_vals)) max(.numeric_vals) else 1
+is_diverging <- data_min < 0
+
+if (is_diverging) {
+  # Fold-change-like data: 0 means "no change" (meaningful), keep as-is
+  limit <- max(abs(data_min), abs(data_max))
+  heatmap_scale <- scale_fill_gradient2(
+    low = "#000099", mid = "white", high = "#FF0000",
+    midpoint = 0, limits = c(-limit, limit),
+    na.value = "grey85"
+  )
+  scale_label <- "log2 fold-change"
+  message(sprintf("[R] Heatmap auto-detect: diverging scale, limits +/-%.2f (data range %.2f to %.2f)",
+                  limit, data_min, data_max))
+} else {
+  # Expression-like data: 0 means "undetected", render as NA so it's distinct from low-expressed
+  heatmap_file[heatmap_file == 0] <- NA
+  heatmap_scale <- scale_fill_gradient(
+    low = "#FFFFFF", high = "#FF0000",
+    limits = c(0, data_max),
+    na.value = "grey85"
+  )
+  scale_label <- "log2 expression"
+  message(sprintf("[R] Heatmap auto-detect: sequential scale, limits 0 to %.2f", data_max))
+}
+
 p2 <- p2 %<+% heatmap_file
-p2 <- p2 + labs(fill = "Fold-change (log2)", size=1) + guides(
+p2 <- p2 + labs(fill = scale_label, size=1) + guides(
   fill = guide_colorbar(
     title.theme  = element_text(size = 6),
     label.theme  = element_text(size = 6),
@@ -468,15 +503,15 @@ p2 <- p2 + labs(fill = "Fold-change (log2)", size=1) + guides(
     ticks.colour = "black"            # optional: tick color
   )
 )
-  
+
 p2 <- p2 +
   coord_cartesian(clip = "off") +
   theme(plot.margin = margin(t = 30, r = 10, b = 10, l = 10))
-  
+
 message(sprintf("[R] Writing heatmap PDF: %s.heatmapL2Counts.pdf", file))
 pdf(paste(file,".heatmapL2Counts.pdf",sep=""), height=opt$height, width=heatmap_width)
 
-gheatmap(p2,heatmap_file, offset = opt$heatmap_offset, colnames_offset_y = 0.5, font.size=2, color="black", colnames_position = "top") + scale_fill_gradient2(low=low_color,high=high_color)
+gheatmap(p2, heatmap_file, offset = opt$heatmap_offset, colnames_offset_y = 0.5, font.size=2, color="black", colnames_position = "top") + heatmap_scale
 
 dev.off()
 
