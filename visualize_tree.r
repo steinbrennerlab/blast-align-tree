@@ -58,8 +58,14 @@ option_list <- list(
         help="heatmap_width"),
 	make_option(c("-p", "--heatmap_offset"), action="store", default=2.0, type="numeric",
         help="heatmap_offset"),
-	make_option(c("--heatmap_file"), action="store", type="character", default="datasets/klepikova_atlas_subset.tsv",
-        help="Path to the dataset file used for the heatmap tree (default: datasets/klepikova_atlas_subset.tsv)"),
+	make_option(c("--heatmap_font_size"), action="store", default=1.2, type="numeric",
+        help="font size for heatmap column labels"),
+	make_option(c("--heatmap_label_angle"), action="store", default=45, type="numeric",
+        help="angle for heatmap column labels"),
+	make_option(c("-d", "--datasets"), action="store", type="character", default=NULL,
+        help="Comma- or semicolon-separated dataset files/directories to display and heatmap. Supports .txt, .tsv, and .csv. Directories are searched recursively for supported files. If omitted, top-level files in datasets/ are used."),
+	make_option(c("--heatmap_file"), action="store", type="character", default=NULL,
+        help="Deprecated alias for one dataset file. Used only when --datasets is omitted."),
 	make_option(c("-z", "--size"), action="store", default=1, type="numeric",
         help="size of font"),
 	make_option(c("-l", "--labels_boolean"), action="store", default=1, type="numeric",
@@ -331,73 +337,246 @@ if (opt$bootstrap_boolean > 0) {
 }
 
 
-# Read all datasets in the /datasets folder
-## Function to read datasets from a folder
+# Read datasets selected by --datasets/--heatmap_file.
+## Files must contain one ID column followed by one or more data columns. The ID
+## column is normalized to "taxa" so ggtree can join values to tip labels.
 
-read_datasets <- function(folder_path) {
-  dataset_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
-  datasets <- list()
+default_dataset_dir <- "datasets"
+supported_dataset_pattern <- "\\.(txt|tsv|csv)$"
 
-  for (file in dataset_files) {
-	dataset_name <- tools::file_path_sans_ext(basename(file))
-    datasets[[dataset_name]] <- read.delim2(file, sep = "\t", header = TRUE, stringsAsFactor = FALSE)
+split_path_list <- function(x) {
+  if (is.null(x) || !nzchar(x)) return(character(0))
+  parts <- trimws(unlist(strsplit(x, "[,;]")))
+  parts[nzchar(parts)]
+}
+
+resolve_existing_path <- function(path) {
+  candidates <- c(path, file.path(SCRIPT_BASE, path))
+  candidates <- candidates[!duplicated(candidates)]
+  for (candidate in candidates) {
+    if (file.exists(candidate)) return(normalizePath(candidate, winslash = "/", mustWork = TRUE))
+  }
+  stop(sprintf("Dataset path not found: %s", path), call. = FALSE)
+}
+
+expand_dataset_inputs <- function(inputs) {
+  files <- character(0)
+
+  for (input in inputs) {
+    expanded <- Sys.glob(input)
+    if (length(expanded) == 0) expanded <- Sys.glob(file.path(SCRIPT_BASE, input))
+    if (length(expanded) == 0) expanded <- input
+
+    for (item in expanded) {
+      path <- resolve_existing_path(item)
+
+      if (dir.exists(path)) {
+        found <- list.files(
+          path,
+          pattern = supported_dataset_pattern,
+          full.names = TRUE,
+          recursive = TRUE,
+          ignore.case = TRUE
+        )
+        files <- c(files, found)
+      } else if (grepl(supported_dataset_pattern, path, ignore.case = TRUE)) {
+        files <- c(files, path)
+      } else {
+        stop(sprintf("Unsupported dataset extension for '%s'. Use .txt, .tsv, or .csv.", path), call. = FALSE)
+      }
+    }
   }
 
-  return(datasets)
+  unique(normalizePath(files, winslash = "/", mustWork = TRUE))
+}
+
+default_dataset_files <- function() {
+  dataset_dir <- resolve_existing_path(default_dataset_dir)
+  files <- list.files(
+    dataset_dir,
+    pattern = supported_dataset_pattern,
+    full.names = TRUE,
+    recursive = FALSE,
+    ignore.case = TRUE
+  )
+  unique(normalizePath(files, winslash = "/", mustWork = TRUE))
+}
+
+read_dataset_file <- function(path, dataset_name) {
+  ext <- tolower(tools::file_ext(path))
+
+  df <- tryCatch(
+    if (ext == "csv") {
+      utils::read.csv(
+        path,
+        header = TRUE,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        comment.char = ""
+      )
+    } else {
+      utils::read.delim(
+        path,
+        header = TRUE,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        quote = "",
+        comment.char = ""
+      )
+    },
+    error = function(e) {
+      stop(sprintf("Could not read dataset '%s': %s", path, e$message), call. = FALSE)
+    }
+  )
+
+  if (ncol(df) < 2) {
+    stop(sprintf("Dataset '%s' must contain an ID column plus at least one data column.", path), call. = FALSE)
+  }
+
+  names(df)[1] <- "taxa"
+  df$taxa <- trimws(as.character(df$taxa))
+  df <- df[!is.na(df$taxa) & nzchar(df$taxa), , drop = FALSE]
+
+  if (nrow(df) == 0) {
+    stop(sprintf("Dataset '%s' has no usable taxa IDs in the first column.", path), call. = FALSE)
+  }
+
+  display_cols <- trimws(names(df)[-1])
+  empty_cols <- !nzchar(display_cols)
+  if (any(empty_cols)) {
+    display_cols[empty_cols] <- paste0("column_", which(empty_cols))
+  }
+
+  safe_prefix <- make.names(dataset_name)
+  internal_cols <- make.unique(make.names(paste(safe_prefix, display_cols, sep = "__")), sep = "_")
+  names(df)[-1] <- internal_cols
+  raw_df <- df
+
+  collapse_values <- function(x) {
+    values <- trimws(as.character(x))
+    values <- values[!is.na(values) & nzchar(values)]
+    if (length(values) == 0) return("")
+    paste(unique(values), collapse = ";")
+  }
+
+  display_df <- raw_df
+  for (col in internal_cols) {
+    display_df[[col]] <- ifelse(is.na(display_df[[col]]), "", as.character(display_df[[col]]))
+  }
+  if (anyDuplicated(display_df$taxa)) {
+    message(sprintf("[R] Dataset '%s' has duplicate taxa IDs; collapsing duplicate values for direct tree labels.", dataset_name))
+    display_df <- stats::aggregate(
+      display_df[, internal_cols, drop = FALSE],
+      by = list(taxa = display_df$taxa),
+      FUN = collapse_values
+    )
+  }
+
+  list(
+    name = dataset_name,
+    path = path,
+    data = display_df,
+    raw_data = raw_df,
+    columns = data.frame(
+      internal = internal_cols,
+      label = display_cols,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+read_datasets <- function(files) {
+  dataset_names <- tools::file_path_sans_ext(basename(files))
+  dataset_names <- make.unique(dataset_names, sep = "_")
+  datasets <- vector("list", length(files))
+
+  for (i in seq_along(files)) {
+    datasets[[i]] <- read_dataset_file(files[i], dataset_names[i])
+  }
+
+  names(datasets) <- dataset_names
+  datasets
 }
 
 ## Function to add datasets to the tree, calculating the text offset for each column
 add_datasets_to_tree <- function(p, datasets, base_offset) {
   cumulative_offset <- opt$symbol_offset + 0.5
-  for (i in seq_along(datasets)) {
-    dataset_name <- names(datasets)[i]
-    dataset <- datasets[[i]]
 
-    p <- p %<+% dataset
+  if (length(datasets) == 0) {
+    return(list(plot = p, total_offset = cumulative_offset))
+  }
+
+  for (i in seq_along(datasets)) {
+    dataset <- datasets[[i]]
+    dataset_name <- dataset$name
+    dataset_df <- dataset$data
+
+    p <- p %<+% dataset_df
 
     # Add dataset name as text annotation
-    # This should stay fixed for each dataset
     p <- p + annotate("text", size = opt$size, x = max(p$data$x) + base_offset + cumulative_offset,
                       y = max(p$data$y) + 2.4, label = dataset_name, fontface = "bold", hjust = 0)
 
     # Add columns as tip labels
-    columns_to_display <- names(dataset)[-1]  # Exclude the first column
-    for (j in seq_along(columns_to_display)) {
-      column_name <- columns_to_display[j]
+    columns_to_display <- dataset$columns
+    for (j in seq_len(nrow(columns_to_display))) {
+      column_name <- columns_to_display$internal[j]
+      column_label <- columns_to_display$label[j]
       column_offset <- (j - 1) * 0.2
 
-      # The column data should use the cumulative offset plus its own offset
-      p <- p + geom_tiplab(aes(label = .data[[column_name]]), size = 1, align = TRUE,
-                           linetype = NA, offset = base_offset + cumulative_offset + column_offset)
+      # The column data should use the cumulative offset plus its own offset.
+      p <- local({
+        column_name_local <- column_name
+        p + geom_tiplab(aes(label = .data[[column_name_local]]), size = 1, align = TRUE,
+                        linetype = NA, offset = base_offset + cumulative_offset + column_offset)
+      })
 
-      # Column names should align with their data
+      # Column names should align with their data.
       p <- p + annotate("text", size = opt$size * 0.8,
                         x = max(p$data$x) + base_offset + cumulative_offset + column_offset,
                         y = max(p$data$y) + 0.7,
-                        label = column_name,
+                        label = column_label,
                         angle = 45,
                         hjust = 0)
     }
 
-    # Update the cumulative offset after processing each dataset
-    cumulative_offset <- cumulative_offset + length(columns_to_display) * 0.2 + 0.15
+    # Update the cumulative offset after processing each dataset.
+    cumulative_offset <- cumulative_offset + nrow(columns_to_display) * 0.2 + 0.15
   }
-  total_offset <<- cumulative_offset
-  return(p)
+
+  list(plot = p, total_offset = cumulative_offset)
 }
 
 
-  # Read datasets
-datasets <- read_datasets("datasets/")
+dataset_inputs <- split_path_list(opt$datasets)
+if (length(dataset_inputs) > 0 && !is.null(opt$heatmap_file) && nzchar(opt$heatmap_file)) {
+  message("[R] --datasets provided; ignoring deprecated --heatmap_file.")
+}
+if (length(dataset_inputs) == 0) {
+  dataset_inputs <- split_path_list(opt$heatmap_file)
+}
+if (length(dataset_inputs) == 0) {
+  dataset_files <- default_dataset_files()
+} else {
+  dataset_files <- expand_dataset_inputs(dataset_inputs)
+}
+
+if (length(dataset_files) == 0) {
+  stop("No supported dataset files found. Use .txt, .tsv, or .csv files.", call. = FALSE)
+}
+message(sprintf("[R] Datasets selected: %s", paste(basename(dataset_files), collapse = ", ")))
+datasets <- read_datasets(dataset_files)
 
   ## Create a duplicate tree for heatmap and MSA trees below -- it will not have datasets
 p2 <- p
 
 # Add datasets to the tree
-p <- add_datasets_to_tree(p, datasets, base_offset = 0)
+dataset_tree <- add_datasets_to_tree(p, datasets, base_offset = 0)
+p <- dataset_tree$plot
+total_offset <- dataset_tree$total_offset
 
 heatmap_width <- opt$width
-opt$width <- max(p$data$x) + total_offset
+opt$width <- max(opt$width, max(p$data$x) + total_offset)
 
 #Creates a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
@@ -443,7 +622,7 @@ Biostrings::writeXStringSet(msa_seqs, msa)
 
 message(sprintf("[R] Writing tree PDF: %s", file))
 pdf(file, height=opt$height, width=opt$width)
-p
+print(p)
 dev.off()
 
 ###
@@ -457,63 +636,170 @@ dev.off()
 #                                       suits fold-change data (e.g., Bjornsen PAMP L2FC)
 #   - If all values are non-negative -> sequential scale (white-red, 0 to max)
 #                                       suits absolute expression (e.g., Klepikova log2 counts)
-# No user configuration required. Drop in any BAT-format TSV and the heatmap will adapt.
+# No user configuration required. Pass any supported BAT-format dataset files and the heatmap will adapt.
 
-heatmap_file <- read.table(opt$heatmap_file, sep="\t", row.names = 1, header = TRUE, stringsAsFactor=F)
+coerce_numeric_for_heatmap <- function(x) {
+  if (is.numeric(x) || is.integer(x)) return(as.numeric(x))
 
-# Inspect data to choose scale type
-.numeric_vals <- suppressWarnings(as.numeric(unlist(heatmap_file)))
-.numeric_vals <- .numeric_vals[is.finite(.numeric_vals)]
-data_min <- if (length(.numeric_vals)) min(.numeric_vals) else 0
-data_max <- if (length(.numeric_vals)) max(.numeric_vals) else 1
-is_diverging <- data_min < 0
+  x_chr <- trimws(as.character(x))
+  x_chr[x_chr %in% c("", "NA", "N/A", "NaN", "na", "n/a", "null", "NULL",
+                     "#N/A", "#NUM!", "#DIV/0!", "#VALUE!", "#REF!")] <- NA_character_
+  converted <- suppressWarnings(as.numeric(x_chr))
 
-if (is_diverging) {
-  # Fold-change-like data: 0 means "no change" (meaningful), keep as-is
-  limit <- max(abs(data_min), abs(data_max))
-  heatmap_scale <- scale_fill_gradient2(
-    low = "#000099", mid = "white", high = "#FF0000",
-    midpoint = 0, limits = c(-limit, limit),
-    na.value = "grey85"
-  )
-  scale_label <- "log2 fold-change"
-  message(sprintf("[R] Heatmap auto-detect: diverging scale, limits +/-%.2f (data range %.2f to %.2f)",
-                  limit, data_min, data_max))
-} else {
-  # Expression-like data: 0 means "undetected", render as NA so it's distinct from low-expressed
-  heatmap_file[heatmap_file == 0] <- NA
-  heatmap_scale <- scale_fill_gradient(
-    low = "#FFFFFF", high = "#FF0000",
-    limits = c(0, data_max),
-    na.value = "grey85"
-  )
-  scale_label <- "log2 expression"
-  message(sprintf("[R] Heatmap auto-detect: sequential scale, limits 0 to %.2f", data_max))
+  non_missing <- !is.na(x_chr)
+  if (!any(!is.na(converted))) return(NULL)
+  if (any(non_missing & is.na(converted))) return(NULL)
+
+  converted
 }
 
-p2 <- p2 %<+% heatmap_file
-p2 <- p2 + labs(fill = scale_label, size=1) + guides(
-  fill = guide_colorbar(
-    title.theme  = element_text(size = 6),
-    label.theme  = element_text(size = 6),
-    # Add these parameters to control legend size:
-    barwidth     = unit(0.3, "cm"),   # width of the color bar
-    barheight    = unit(1, "cm"),     # height of the color bar
-    frame.colour = "black",           # optional: adds a frame
-    ticks.colour = "black"            # optional: tick color
+mean_or_na <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  mean(x, na.rm = TRUE)
+}
+
+build_heatmap_table <- function(datasets) {
+  tables <- list()
+  skipped <- character(0)
+
+  for (dataset in datasets) {
+    df <- dataset$raw_data
+    numeric_df <- data.frame(taxa = df$taxa, stringsAsFactors = FALSE, check.names = FALSE)
+    heatmap_col_names <- character(0)
+
+    for (j in seq_len(nrow(dataset$columns))) {
+      internal <- dataset$columns$internal[j]
+      display <- dataset$columns$label[j]
+      numeric_values <- coerce_numeric_for_heatmap(df[[internal]])
+
+      if (is.null(numeric_values)) {
+        skipped <- c(skipped, sprintf("%s:%s", dataset$name, display))
+        next
+      }
+
+      heatmap_name <- if (length(datasets) > 1) {
+        paste(dataset$name, display, sep = ": ")
+      } else {
+        display
+      }
+      heatmap_col_names <- c(heatmap_col_names, heatmap_name)
+      numeric_df[[heatmap_name]] <- numeric_values
+    }
+
+    if (length(heatmap_col_names) == 0) next
+
+    if (anyDuplicated(numeric_df$taxa)) {
+      message(sprintf("[R] Heatmap dataset '%s' has duplicate taxa IDs; averaging duplicate numeric values.", dataset$name))
+    }
+
+    agg <- stats::aggregate(
+      numeric_df[, heatmap_col_names, drop = FALSE],
+      by = list(taxa = numeric_df$taxa),
+      FUN = mean_or_na
+    )
+    rownames(agg) <- agg$taxa
+    agg$taxa <- NULL
+    names(agg) <- make.unique(names(agg), sep = "_")
+    tables[[dataset$name]] <- agg
+  }
+
+  if (length(skipped) > 0) {
+    message(sprintf("[R] Heatmap skipped nonnumeric columns: %s", paste(skipped, collapse = ", ")))
+  }
+  if (length(tables) == 0) return(NULL)
+
+  all_taxa <- unique(unlist(lapply(tables, rownames), use.names = FALSE))
+  combined <- data.frame(row.names = all_taxa, check.names = FALSE)
+
+  for (tbl in tables) {
+    for (col in names(tbl)) {
+      combined_col <- col
+      while (combined_col %in% names(combined)) {
+        combined_col <- make.unique(c(names(combined), col), sep = "_")[length(names(combined)) + 1]
+      }
+      combined[[combined_col]] <- NA_real_
+      combined[rownames(tbl), combined_col] <- tbl[[col]]
+    }
+  }
+
+  combined
+}
+
+heatmap_file <- build_heatmap_table(datasets)
+
+if (!is.null(heatmap_file) && ncol(heatmap_file) > 0) {
+  # Inspect data to choose scale type
+  .numeric_vals <- suppressWarnings(as.numeric(unlist(heatmap_file, use.names = FALSE)))
+  .numeric_vals <- .numeric_vals[is.finite(.numeric_vals)]
+  data_min <- if (length(.numeric_vals)) min(.numeric_vals) else 0
+  data_max <- if (length(.numeric_vals)) max(.numeric_vals) else 1
+  is_diverging <- data_min < 0
+
+  if (is_diverging) {
+    # Values crossing 0 get a diverging scale centered at 0.
+    limit <- max(abs(data_min), abs(data_max))
+    heatmap_scale <- scale_fill_gradient2(
+      low = "#000099", mid = "white", high = "#FF0000",
+      midpoint = 0, limits = c(-limit, limit),
+      na.value = "grey85"
+    )
+    scale_label <- "value"
+    message(sprintf("[R] Heatmap auto-detect: diverging scale, limits +/-%.2f (data range %.2f to %.2f)",
+                    limit, data_min, data_max))
+  } else {
+    # Non-negative data: render 0 as missing/undetected so it is visually distinct.
+    heatmap_file[heatmap_file == 0] <- NA
+    sequential_max <- if (data_max > 0) data_max else 1
+    heatmap_scale <- scale_fill_gradient(
+      low = "#FFFFFF", high = "#FF0000",
+      limits = c(0, sequential_max),
+      na.value = "grey85"
+    )
+    scale_label <- "value"
+    message(sprintf("[R] Heatmap auto-detect: sequential scale, limits 0 to %.2f", sequential_max))
+  }
+
+  p_heatmap <- p2 + labs(fill = scale_label, size=1) + guides(
+    fill = guide_colorbar(
+      title.theme  = element_text(size = 6),
+      label.theme  = element_text(size = 6),
+      barwidth     = unit(0.3, "cm"),
+      barheight    = unit(1, "cm"),
+      frame.colour = "black",
+      ticks.colour = "black"
+    )
   )
-)
 
-p2 <- p2 +
-  coord_cartesian(clip = "off") +
-  theme(plot.margin = margin(t = 30, r = 10, b = 10, l = 10))
+  p_heatmap <- p_heatmap +
+    coord_cartesian(clip = "off") +
+    theme(plot.margin = margin(t = 30, r = 10, b = 10, l = 10))
 
-message(sprintf("[R] Writing heatmap PDF: %s.heatmapL2Counts.pdf", file))
-pdf(paste(file,".heatmapL2Counts.pdf",sep=""), height=opt$height, width=heatmap_width)
+  heatmap_width <- max(
+    heatmap_width,
+    max(p2$data$x, na.rm = TRUE) + opt$heatmap_offset + ncol(heatmap_file) * 0.15 + 2
+  )
 
-gheatmap(p2, heatmap_file, offset = opt$heatmap_offset, colnames_offset_y = 0.5, font.size=2, color="black", colnames_position = "top") + heatmap_scale
+  message(sprintf("[R] Writing heatmap PDF: %s.heatmapL2Counts.pdf", file))
+  pdf(paste(file,".heatmapL2Counts.pdf",sep=""), height=opt$height, width=heatmap_width)
 
-dev.off()
+  heatmap_plot <- gheatmap(
+    p_heatmap,
+    heatmap_file,
+    offset = opt$heatmap_offset,
+    width = opt$heatmap_width,
+    colnames_offset_y = 0.5,
+    colnames_angle = opt$heatmap_label_angle,
+    font.size = opt$heatmap_font_size,
+    hjust = 0,
+    color="black",
+    colnames_position = "top"
+  ) + heatmap_scale
+  print(heatmap_plot)
+
+  dev.off()
+} else {
+  message("[R] No numeric dataset columns available for the heatmap tree. Skipping heatmap PDF.")
+}
 
 ###
 #   Tree Version 3 -- Display a multiple sequence alignment cartoon
@@ -746,6 +1032,6 @@ p_msa <- p_msa +
 msa_pdf_height <- if (has_features) opt$height + 0.5 else opt$height
 message(sprintf("[R] Writing MSA PDF: %s.MSA.pdf", file))
 pdf(paste(file,".MSA.pdf",sep=""), height=msa_pdf_height, width=opt$width)
-p_msa
+print(p_msa)
 dev.off()
 

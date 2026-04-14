@@ -735,7 +735,7 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
         # Final output: bootstrap-supported tree (like FastTree output)
         shutil.copyfile(support_tree, tree_out)
 
-def visualize_tree(entry: str, queries: List[str], workdir: Path):
+def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Optional[str] = None):
     """
     Run visualize-tree.r on the combinedtree.nwk
     By default, --write argument is set to the first query name.
@@ -751,6 +751,8 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path):
         "--entry", entry,
         "--write", write_arg
     ]
+    if datasets:
+        cmd.extend(["--datasets", datasets])
     run(cmd, cwd=workdir)
 
 # -----------------------
@@ -1208,6 +1210,8 @@ def main():
     ap.add_argument("-aa", "--slice", nargs="*", default=[], help="AA slice start end, optional")
     ap.add_argument("--threads", type=int, default=max(1, os.cpu_count() // 2), help="parallel jobs for BLAST steps")
     ap.add_argument("--workdir", default=".", help="working directory (default=.)")
+    ap.add_argument("--datasets", default=None,
+                    help="Comma- or semicolon-separated dataset files/directories to pass to visualize_tree.r")
     ap.add_argument(
         "--blast_type",
         choices=["tblastn", "blastp"],
@@ -1391,7 +1395,7 @@ def main():
 
 
     # Step 8: run visualize-tree.r
-    visualize_tree(entry, args.queries, workdir)
+    visualize_tree(entry, args.queries, workdir, args.datasets)
 
     # Step 9: compact run-root outputs before archiving
     print(f"\n→ Cleaning run-root intermediates")
@@ -1411,7 +1415,10 @@ def main():
     subdir = f"runs/{timestamp}"
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")
-    print(f"  Rscript visualize_tree.r -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>")
+    redraw_cmd = f"  Rscript visualize_tree.r -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>"
+    if args.datasets:
+        redraw_cmd += f" --datasets \"{args.datasets}\""
+    print(redraw_cmd)
 
 if __name__ == "__main__":
     main()
