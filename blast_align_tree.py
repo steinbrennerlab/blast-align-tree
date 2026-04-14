@@ -684,25 +684,56 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
         run(["FastTree", "-out", str(tree_out), str(aln_fa)])
 
     elif tree_builder == "RAxML":
-        prefix = entry_dir / f"{entry}.raxmlng"
+        prefix = f"{entry}.raxmlng"
+        prefix_path = entry_dir / prefix
 
+        # ---- Step 1: ML tree search ----
+        print("  [RAxML] Running ML tree search...")
         run([
             "raxml-ng",
             "--msa", str(aln_fa),
             "--model", "LG+G",
             "--threads", str(threads),
             "--blopt", "nr_safe",
-            "--prefix", prefix.name
+            "--prefix", prefix
         ], cwd=entry_dir)
 
-        best_tree = entry_dir / f"{entry}.raxmlng.raxml.bestTree"
+        best_tree = entry_dir / f"{prefix}.raxml.bestTree"
         if not best_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce a bestTree: {best_tree}")
 
-        shutil.copyfile(best_tree, tree_out)
-    tree_end = datetime.now()
-    print(f"  Tree building time: {tree_end - tree_start}")
+        # ---- Step 2: Bootstrap replicates ----
+        print("  [RAxML] Running bootstrap replicates...")
+        run([
+            "raxml-ng",
+            "--bootstrap",
+            "--msa", str(aln_fa),
+            "--model", "LG+G",
+            "--threads", str(threads),
+            "--bs-trees", "100",   # <-- adjust as desired
+            "--prefix", prefix
+        ], cwd=entry_dir)
 
+        bs_trees = entry_dir / f"{prefix}.raxml.bootstraps"
+        if not bs_trees.exists():
+            raise SystemExit(f"RAxML-NG did not produce bootstrap trees: {bs_trees}")
+
+        # ---- Step 3: Map bootstrap support onto ML tree ----
+        print("  [RAxML] Mapping bootstrap support...")
+        run([
+            "raxml-ng",
+            "--support",
+            "--tree", str(best_tree),
+            "--bs-trees", str(bs_trees),
+            "--prefix", prefix
+        ], cwd=entry_dir)
+
+        support_tree = entry_dir / f"{prefix}.raxml.support"
+        if not support_tree.exists():
+            raise SystemExit(f"RAxML-NG did not produce support tree: {support_tree}")
+
+        # Final output: bootstrap-supported tree (like FastTree output)
+        shutil.copyfile(support_tree, tree_out)
 
 def visualize_tree(entry: str, queries: List[str], workdir: Path):
     """
