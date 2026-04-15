@@ -5,7 +5,7 @@ multiple queries and local genome databases.
 
 [![DOI](https://zenodo.org/badge/374224275.svg)](https://zenodo.org/doi/10.5281/zenodo.10888646)
 
-## Introduction
+## 📖 Introduction
 
 A common task in bioinformatics is to find similar genes across a set of
 genomes and compare them using phylogenetic methods. As an alternative to
@@ -18,7 +18,7 @@ family of interest.
 <!-- TODO: regenerate images/flowchart.png if the pipeline layout has changed -->
 ![](images/flowchart.png)
 
-## Installation
+## ⚙️ Installation
 
 ### Step 1. Clone the repo
 
@@ -214,18 +214,18 @@ the pipeline with no extra step. Pass `--no-index` to skip that.
 
 The default set 🌱🌿🫘🫛🍅📊 is:
 
-- 🌱 **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
-- 🌿 **TAIR10 proteins** — *Arabidopsis thaliana* proteome
-- 🫘 **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
-- 🫛 **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences
-- 🍅 **Niben261 proteins** — *Nicotiana benthamiana* proteome (v2.6.1)
+- **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
+- **TAIR10 proteins** — *Arabidopsis thaliana* proteome
+- **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
+- **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences
+- **Niben261 proteins** — *Nicotiana benthamiana* proteome (v2.6.1)
 - 📊 **Klepikova atlas subset** — *Arabidopsis* expression overlay
   dataset (lands in `./datasets/`, not `./genomes/`)
 
 `--all` 🌍 additionally pulls the rest of the hosted lineup
-(fetched into `./genomes/animals/`): 🧑 human CDS, 🐭 mouse CDS,
-🐀 rat CDS, 🐒 chimp CDS, 🐟 zebrafish CDS, 🪰 fruit fly CDS,
-🪱 *C. elegans* CDS, 🍞 yeast ORFs (*S. cerevisiae* S288C).
+(fetched into `./genomes/animals/`): human CDS, mouse CDS,
+rat CDS, chimp CDS, zebrafish CDS, fruit fly CDS,
+*C. elegans* CDS, yeast ORFs (*S. cerevisiae* S288C).
 
 Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 
@@ -233,7 +233,7 @@ Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 Drop any FASTA into `./genomes/` — no manifest edit, no reinstall
 needed. See [Adding a new genome](#adding-a-new-genome) below.
 
-## GUI: `bat-genome-selector`
+## 🖥️ GUI: `bat-genome-selector`
 
 The easiest way to build a valid `blast-align-tree` invocation is the
 Tkinter GUI. Launch it from a directory that contains a `genomes/` folder:
@@ -270,7 +270,7 @@ bat-genome-selector
   the current working directory so you can quickly jump back to prior
   results.
 
-## Full Tutorial
+## 📚 Full Tutorial
 
 The tutorial commands below use the default files included in the repo clone. 
 If you start from a new directory, `blast-align-tree-fetch` will download the 
