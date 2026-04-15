@@ -407,11 +407,11 @@ class GenomeSelectorApp:
         canvas.bind_all("<Button-4>", _on_mousewheel)
         canvas.bind_all("<Button-5>", _on_mousewheel)
 
-        # Sync header column widths with data rows
-        self.inner_frame.bind("<Configure>", lambda e: (
-            canvas.configure(scrollregion=canvas.bbox("all")),
-            self._sync_columns(),
-        ))
+        # Update scroll region whenever the inner frame resizes. Column
+        # syncing is handled explicitly on init / refresh to avoid recursive
+        # Configure events (sync resizes columns → triggers Configure → loop).
+        self.inner_frame.bind("<Configure>",
+                              lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
         self._populate_rows()
 
@@ -706,17 +706,33 @@ class GenomeSelectorApp:
     # Column sync
     # ------------------------------------------------------------------
     def _sync_columns(self):
-        """Match header_frame column widths to inner_frame data columns."""
-        for col in range(self.inner_frame.grid_size()[0]):
+        """Align header_frame and inner_frame columns by forcing each matching
+        column in both frames to the larger of the two natural cell widths."""
+        num_cols = max(self.inner_frame.grid_size()[0],
+                       self.header_frame.grid_size()[0])
+        # Reset minsize so grid_bbox reports the true natural widths.
+        for col in range(num_cols):
+            if col == DIVIDER_COL:
+                continue
+            self.inner_frame.columnconfigure(col, minsize=0)
+            self.header_frame.columnconfigure(col, minsize=0)
+        self.root.update_idletasks()
+        # grid_bbox returns (x, y, w, h) with w including padx — use it so
+        # padding contributes to alignment, not just widget width.
+        for col in range(num_cols):
             if col == DIVIDER_COL:
                 continue
             try:
-                slaves = self.inner_frame.grid_slaves(row=0, column=col)
-                if slaves:
-                    w = slaves[0].winfo_width()
-                    self.header_frame.columnconfigure(col, minsize=w)
-            except (tk.TclError, IndexError):
-                pass
+                inner_bbox = self.inner_frame.grid_bbox(column=col, row=0)
+                header_bbox = self.header_frame.grid_bbox(column=col, row=1)
+            except tk.TclError:
+                continue
+            inner_w = inner_bbox[2] if inner_bbox else 0
+            header_w = header_bbox[2] if header_bbox else 0
+            min_w = max(inner_w, header_w)
+            if min_w:
+                self.inner_frame.columnconfigure(col, minsize=min_w)
+                self.header_frame.columnconfigure(col, minsize=min_w)
         # Keep the divider column fixed in both frames so the vertical rules align.
         self.header_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
         self.inner_frame.columnconfigure(DIVIDER_COL, minsize=DIVIDER_COL_WIDTH, weight=0)
