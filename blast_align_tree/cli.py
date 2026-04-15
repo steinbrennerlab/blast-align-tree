@@ -23,6 +23,9 @@ from typing import Iterable, List, Tuple, Optional
 import re
 import tempfile
 from datetime import datetime
+from importlib.resources import files as _pkg_files
+
+_PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 
 # Biopython
 try:
@@ -740,7 +743,7 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Opti
     Run visualize-tree.r on the combinedtree.nwk
     By default, --write argument is set to the first query name.
     """
-    rscript = workdir / "visualize_tree.r"
+    rscript = _PACKAGE_DATA / "visualize_tree.r"
 
     if not rscript.exists():
         raise SystemExit(f"R script not found: {rscript}")
@@ -1415,7 +1418,8 @@ def main():
     subdir = f"runs/{timestamp}"
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")
-    redraw_cmd = f"  Rscript visualize_tree.r -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>"
+    rscript_path = _PACKAGE_DATA / "visualize_tree.r"
+    redraw_cmd = f"  Rscript {rscript_path} -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>"
     if args.datasets:
         redraw_cmd += f" --datasets \"{args.datasets}\""
     print(redraw_cmd)

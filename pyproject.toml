@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blast-align-tree"
+version = "1.0.0"
+description = "BLAST, align, and build phylogenetic trees from genomic databases"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "Adam Steinbrenner", email = "astein10@uw.edu" }]
+dependencies = ["biopython"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+blast-align-tree = "blast_align_tree.cli:main"
+bat-genome-selector = "blast_align_tree.genome_selector:main"
+blast-align-tree-fetch = "blast_align_tree.fetch:main"
+
+[project.urls]
+Homepage = "https://github.com/steinbrennerlab/blast-align-tree"
+Issues = "https://github.com/steinbrennerlab/blast-align-tree/issues"
+
+[tool.setuptools.packages.find]
+include = ["blast_align_tree*"]
+
+[tool.setuptools.package-data]
+blast_align_tree = [
+    "data/*.r",
+    "data/*.txt",
+    "data/*.json",
+    "data/scripts/*.py",
+]

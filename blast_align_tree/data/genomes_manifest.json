@@ -1,0 +1,38 @@
+{
+  "_comment": "Genome files hosted externally. Populate url/sha256/size_mb when uploading release assets.",
+  "base_url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0",
+  "genomes": {
+    "TAIR10cds": {
+      "filename": "TAIR10cds.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": true,
+      "description": "Arabidopsis thaliana CDS (TAIR10)"
+    },
+    "TAIR10protein": {
+      "filename": "TAIR10protein.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": true,
+      "description": "Arabidopsis thaliana proteins (TAIR10)"
+    },
+    "Pvul218cds": {
+      "filename": "Pvul218cds.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "description": "Phaseolus vulgaris CDS (v2.1)"
+    },
+    "Niben261_proteins": {
+      "filename": "Niben261_genome.annotation.proteins.fasta",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "description": "Nicotiana benthamiana proteins (v2.6.1)"
+    }
+  }
+}

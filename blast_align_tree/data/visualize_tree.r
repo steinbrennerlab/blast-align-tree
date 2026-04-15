@@ -245,8 +245,8 @@ system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), EN
 system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, paste0(opt$write, ".csv"), "--aa")), stdout = FALSE, stderr = FALSE)
 
 # Read gene symbols to display next to annotated genes
-  ## Read gene symbols file from root directory
-dir3 <- paste("gene_symbols.txt", sep='')
+  ## Read gene symbols file from the package data directory (alongside this R script)
+dir3 <- file.path(SCRIPT_BASE, "gene_symbols.txt")
 dd3 <- read.table(dir3, sep="\t", header = TRUE, stringsAsFactor=F, quote="")
 p <- p %<+% dd3
 

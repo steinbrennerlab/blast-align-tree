@@ -26,16 +26,23 @@
 !/.gitignore
 
 # Don't ignore these specific files in the root directory
-!/visualize_tree.r
 !/psiblast-align-tree.sh
 !/tblastn-align-tree.sh
 !/blastp-align-tree.sh
-!/blast_align_tree.py
 !/bat-flowchart.pptx
-!/gene_symbols.txt
 !/flowchart.png
 !/tree.png
 !/bbl.png
 !/bbl2.png
 !/install_r_deps.R
-!/genome_selector.py
+!/LICENSE
+!/pyproject.toml
+!/pip_plan.md
+
+# Python package (sources, R script, helper scripts, gene_symbols.txt, manifest)
+!/blast_align_tree
+!/blast_align_tree/**
+
+# Python build artifacts inside the package
+blast_align_tree/**/__pycache__/
+blast_align_tree/**/*.egg-info/

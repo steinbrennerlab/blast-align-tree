@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BAT Genome Selector — tkinter GUI for building blast_align_tree.py commands.
+BAT Genome Selector — tkinter GUI for building blast-align-tree commands.
 
 Scans genomes/ for *.fa and *.fna files, auto-detects header tokens from the
 first FASTA record, and generates copy-paste-ready -dbs / -hdr / -n arguments.
@@ -18,7 +18,7 @@ from tkinter import ttk
 from pathlib import Path
 
 
-PROJ_DIR = Path(__file__).parent
+PROJ_DIR = Path.cwd()
 GENOMES_DIR = PROJ_DIR / "genomes"
 FASTA_EXTENSIONS = {".fa", ".faa", ".fas", ".fasta", ".fna"}
 # BLAST index extensions to exclude
@@ -331,9 +331,11 @@ class GenomeSelectorApp:
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
             f"Scanning genomes/ for FASTA files ({exts})\n"
-            "1. Select hit databases, set -hdr tokens, and fill in query IDs below.\n"
-            "2. Click 'Generate Command', then 'Copy to Clipboard'.\n"
-            "3. Paste and run the command in a terminal with your conda/mamba environment activated."
+            "1. Install the package once: pip install blast-align-tree\n"
+            "   (or, from this repo: pip install -e .)\n"
+            "2. Select hit databases, set -hdr tokens, and fill in query IDs below.\n"
+            "3. Click 'Generate Command', then 'Copy to Clipboard'.\n"
+            "4. Paste and run the command in a terminal with your conda/mamba environment activated."
         )
         tk.Label(self.root, text=summary, font=("TkDefaultFont", 9),
                  justify="left", anchor="w", padx=12).pack(fill="x")
@@ -580,7 +582,7 @@ class GenomeSelectorApp:
         gen_frame.pack(fill="x", padx=8, pady=(0, 4))
 
         self.prepend_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(gen_frame, text="Prepend  python blast_align_tree.py",
+        ttk.Checkbutton(gen_frame, text="Prepend  blast-align-tree",
                         variable=self.prepend_var).pack(side="left", padx=(0, 8))
         tk.Button(gen_frame, text="Generate Command",
                   command=self._generate,
@@ -881,7 +883,7 @@ class GenomeSelectorApp:
         return [q for q in re.split(r'[,\s]+', raw.strip()) if q]
 
     def _build_args(self) -> list[str] | None:
-        """Build the argument list for blast_align_tree.py. Returns None on error."""
+        """Build the argument list for blast-align-tree. Returns None on error."""
         hit_dbs = []
         query_rows = []
         for chk_var, hdr_var, sfx_var, n_var, q_var, gpath, name in self.rows:
@@ -1016,7 +1018,7 @@ class GenomeSelectorApp:
 
         result = " ".join(display_parts)
         if self.prepend_var.get():
-            result = "python blast_align_tree.py " + result
+            result = "blast-align-tree " + result
         self._set_output(result)
         self.notebook.select(0)  # Switch to Command tab
 
@@ -1034,7 +1036,7 @@ class GenomeSelectorApp:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Tkinter GUI for building blast_align_tree.py commands."
+        description="Tkinter GUI for building blast-align-tree commands."
     )
     parser.add_argument(
         "--default-n",
