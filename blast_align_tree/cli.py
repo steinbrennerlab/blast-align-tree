@@ -26,6 +26,7 @@ from datetime import datetime
 from importlib.resources import files as _pkg_files
 
 _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
+RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 
 # Biopython
 try:
@@ -64,6 +65,9 @@ def run(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> su
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
+
+def run_assets_dir(entry_dir: Path) -> Path:
+    return entry_dir / RUN_ASSETS_DIRNAME
 
 def read_lines(fp: Path) -> List[str]:
     if not fp.exists():
@@ -219,13 +223,34 @@ def _write_deduped_fasta(in_paths: Iterable[Path], out_path: Path) -> bool:
     return True
 
 
+def _move_top_level_run_assets(entry_dir: Path, assets_dir: Path) -> int:
+    """
+    Keep PDFs at the run root and move all other top-level run files into
+    genes_alignments_trees/.
+    """
+    moved = 0
+    ensure_dir(assets_dir)
+
+    for item in list(entry_dir.iterdir()):
+        if not item.is_file():
+            continue
+        if item.suffix.lower() == ".pdf":
+            continue
+        if _move_file_if_exists(item, assets_dir / item.name):
+            moved += 1
+
+    return moved
+
+
 def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases: List[str], blast_type: str):
     """
-    Keep reports at the run root, move merged/hit sequence material into
-    hits/, then remove derivable BLAST/merge staging files before archiving.
+    Keep PDFs at the run root, move Newick trees, alignments, mappings,
+    features, and hit sequence material into genes_alignments_trees/, then
+    remove derivable BLAST/merge staging files before archiving.
     """
     bt = bt_suffix(blast_type)
-    hits_dir = entry_dir / "hits"
+    assets_dir = run_assets_dir(entry_dir)
+    hits_dir = assets_dir / "hits"
     ensure_dir(hits_dir)
 
     moved = 0
@@ -323,7 +348,12 @@ def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases:
         if _move_file_if_exists(fp, hits_dir / fp.name):
             moved += 1
 
-    print(f"[cleanup] hits files moved: {moved}; generated: {generated}; staging files removed: {removed}")
+    asset_files_moved = _move_top_level_run_assets(entry_dir, assets_dir)
+
+    print(
+        f"[cleanup] hits files moved: {moved}; generated: {generated}; "
+        f"run assets moved: {asset_files_moved}; staging files removed: {removed}"
+    )
 
 
 
@@ -1340,7 +1370,7 @@ def main():
         dedup_fasta_by_id(aa_parse_merged, parse_merged)
 
     # Step 5: per-database merges → Orthofinder-ready copies
-    orthof = entry_dir / "hits" / "orthofinder-input"
+    orthof = run_assets_dir(entry_dir) / "hits" / "orthofinder-input"
     ensure_dir(orthof)
     if blast_type == "tblastn":
         pattern = f"*.{{dbl}}.seq.{bt}.blastdb.translate.fa.parse.fa"
@@ -1411,10 +1441,11 @@ def main():
     print(f"\n{'='*50}")
     print(f"  Done.")
     print(f"{'='*50}")
-    print(f"  Alignment: {run_dir / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
-    print(f"  Tree:      {run_dir / 'combinedtree.nwk'}")
-    print(f"  Mapping:   {run_dir / 'merged_genome_mapping.txt'}")
-    print(f"  Reports:   {run_dir}")
+    print(f"  Alignment: {run_dir / RUN_ASSETS_DIRNAME / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
+    print(f"  Tree:      {run_dir / RUN_ASSETS_DIRNAME / 'combinedtree.nwk'}")
+    print(f"  Mapping:   {run_dir / RUN_ASSETS_DIRNAME / 'merged_genome_mapping.txt'}")
+    print(f"  PDFs:      {run_dir}")
+    print(f"  Run assets: {run_dir / RUN_ASSETS_DIRNAME}")
     subdir = f"runs/{timestamp}"
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")

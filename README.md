@@ -190,9 +190,10 @@ blast-align-tree -q AT4G33430.1 -qdbs TAIR10cds.fa \
 ```
 
 The pipeline creates a folder `AT4G33430.1/` in your working directory.
-The run root contains the top-level report files; BLAST hit FASTAs and
-per-genome summaries go under `AT4G33430.1/hits/`; `visualize_tree.r`
-writes the tree PDFs into `AT4G33430.1/runs/<TIMESTAMP>/`.
+The timestamped run root keeps the tree PDFs. Newick tree files, gene
+lists, alignment FASTAs, mappings, features, BLAST hit FASTAs, and
+per-genome summaries go under
+`AT4G33430.1/runs/<TIMESTAMP>/genes_alignments_trees/`.
 
 After the run finishes, the pipeline prints a re-draw hint. For example,
 to reroot on an outgroup (`-a AT5G10290`) and zoom in on a subnode
@@ -228,8 +229,9 @@ blast-align-tree -q AT2G19590.1 -qdbs TAIR10cds.fa \
                  -hdr gene: polypeptide= locus=
 ```
 
-This creates `AT2G19590.1/` with report files at the run root and BLAST
-hit FASTAs / per-genome summaries under `hits/`.
+This creates `AT2G19590.1/` with tree PDFs at the timestamped run root and
+Newick tree files, alignment files, BLAST hit FASTAs, and per-genome
+summaries under `genes_alignments_trees/`.
 
 A powerful feature of `ggtree` is the ability to plot associated data.
 Each run produces two complementary tree PDFs:
@@ -247,12 +249,12 @@ below shows the heatmap version:
 <!-- TODO: regenerate images/ACO-tree-1.png (heatmap version) from the ACO run above -->
 ![](images/ACO-tree-1.png)
 
-A separate PDF with `.msa` appended shows a cartoon alignment — useful
+A separate PDF with `.MSA.pdf` appended shows a cartoon alignment — useful
 for spotting large differences in domain architecture. Open the
-underlying `.fasta` files in the run folder (or `hits/`) to inspect the
+underlying FASTA files in `genes_alignments_trees/` to inspect the
 alignment in detail.
 
-<!-- TODO: regenerate images/ACO-tree-2.png (.msa cartoon alignment) -->
+<!-- TODO: regenerate images/ACO-tree-2.png (.MSA.pdf cartoon alignment) -->
 ![](images/ACO-tree-2.png)
 
 ### Redraw the ACC Oxidase tree
@@ -364,7 +366,7 @@ blast-align-tree --blast_type blastp \
                  -hdr gene: id id
 ```
 
-The run folder contains a tree with tobacco SOBIR1 homologs slotted in
+The run produces a tree PDF with tobacco SOBIR1 homologs slotted in
 alongside the *N. benthamiana* and Arabidopsis sequences.
 
 <!-- TODO: regenerate images/SOBIR1_with_ntab.png from the run above -->

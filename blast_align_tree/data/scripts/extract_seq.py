@@ -10,6 +10,8 @@ import argparse
 from pathlib import Path
 from Bio import SeqIO
 
+RUN_ASSETS_DIRNAME = "genes_alignments_trees"
+
 def existing_path(*candidates: Path) -> Path:
     for path in candidates:
         if path.exists():
@@ -28,22 +30,26 @@ def main():
 
     entry_dir = Path(args.entry)
     hits_dir = entry_dir / "hits"
+    assets_hits_dir = entry_dir / RUN_ASSETS_DIRNAME / "hits"
 
     if args.aa:
         fasta_path = existing_path(
             entry_dir / f"{args.gene}.parse.merged.aligned.fa",
+            assets_hits_dir / f"{args.gene}.parse.merged.aligned.fa",
             hits_dir / f"{args.gene}.parse.merged.aligned.fa",
         )
         out_ext = ".aa.fa"
     else:
         fasta_path = existing_path(
             entry_dir / f"{args.gene}.nt.parse.merged.fa",
+            assets_hits_dir / f"{args.gene}.nt.parse.merged.fa",
             hits_dir / f"{args.gene}.nt.parse.merged.fa",
         )
         out_ext = ".cds.fa"
 
     list_path = entry_dir / args.list
     out_path = entry_dir / f"{args.list}{out_ext}"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Read gene IDs
     with open(list_path) as f:

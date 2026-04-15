@@ -79,7 +79,7 @@ option_list <- list(
 	make_option(c("--features"),type = "character",default = NULL,
 		help = "Optional path to features.txt. If omitted, will try <entry>/features.txt. If missing/unreadable, feature overlay is skipped."),
 	make_option(c("--subdir"),type = "character",default = NULL,
-		help = "Relative subdirectory to append under both --entry and --write (e.g., 'runs/20250903_1557'). Leading slashes will be stripped."),
+		help = "Relative run directory under --entry (e.g., 'runs/20250903_1557'). Leading slashes will be stripped."),
 	make_option(c("--dist_type"), action="store", type="character", default="patristic",
 		help="Distance type to compute: 'patristic' or 'phenetic' (case-insensitive)"),
 	make_option(c("--dist_digits"), action="store", type="integer", default=3, help="Number of digits to round distances when printed"),
@@ -97,9 +97,20 @@ append_rel <- function(base, subdir) {
   file.path(base, gsub("^[/\\\\]+", "", subdir))
 }
 ENTRY_DIR <- append_rel(opt$entry, opt$subdir)
-WRITE_DIR <- append_rel(opt$subdir, opt$write)
+RUN_ASSETS_NAME <- "genes_alignments_trees"
+RUN_ASSETS_DIR <- file.path(ENTRY_DIR, RUN_ASSETS_NAME)
+dir.create(RUN_ASSETS_DIR, recursive = TRUE, showWarnings = FALSE)
+WRITE_DIR <- file.path(ENTRY_DIR, opt$write)
 message(sprintf("ENTRY_DIR=%s", ENTRY_DIR))
 message(sprintf("WRITE_DIR=%s", WRITE_DIR))
+
+existing_path <- function(...) {
+  candidates <- c(...)
+  for (path in candidates) {
+    if (file.exists(path)) return(path)
+  }
+  candidates[[1]]
+}
 
 parse_csv_list <- function(x) {
   if (is.null(x) || !nzchar(x)) return(NULL)
@@ -125,7 +136,10 @@ parse_genome_colors <- function(x) {
 
 `%||%` <- function(a, b) if (!is.null(a) && nzchar(a)) a else b
 
-feature_file_default <- file.path(ENTRY_DIR, "features.txt")
+feature_file_default <- existing_path(
+  file.path(ENTRY_DIR, "features.txt"),
+  file.path(RUN_ASSETS_DIR, "features.txt")
+)
 feature_file <- opt$features %||% feature_file_default
 
 read_features_safe <- function(path) {
@@ -166,16 +180,23 @@ working_dir <- getwd()
 setwd(working_dir)
 
 #Takes in the output from FastTree fed by blast_align_tree bash script
-tree_newick <- paste(ENTRY_DIR,"/","combinedtree.nwk", sep='')
+tree_newick <- existing_path(
+  file.path(ENTRY_DIR, "combinedtree.nwk"),
+  file.path(RUN_ASSETS_DIR, "combinedtree.nwk")
+)
 tree <- read.tree(tree_newick)
 
 #Takes in merged_genome_mapping file from blast_align_tree
-gene_species_list <- paste(ENTRY_DIR,"/","merged_genome_mapping.txt", sep='')
+gene_species_list <- existing_path(
+  file.path(ENTRY_DIR, "merged_genome_mapping.txt"),
+  file.path(RUN_ASSETS_DIR, "merged_genome_mapping.txt")
+)
 
 #define output filenames
 file <- file.path(ENTRY_DIR, paste0(opt$write, ".pdf"))
-file_csv <- file.path(ENTRY_DIR, paste0(opt$write, ".csv"))
-file_nwk <- file.path(ENTRY_DIR, paste0(opt$write, ".nwk"))
+file_csv_rel <- file.path(RUN_ASSETS_NAME, paste0(opt$write, ".csv"))
+file_csv <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".csv"))
+file_nwk <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".nwk"))
 
 
 
@@ -241,8 +262,8 @@ v <- as.character(as.matrix(tips)[,1])
 write(v, file = file_csv, sep = "\n")
 
 # Extract sequences in tree order: NT (for CDS) and AA (for alignment visualization)
-system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, paste0(opt$write, ".csv"))), stdout = FALSE, stderr = FALSE)
-system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, paste0(opt$write, ".csv"), "--aa")), stdout = FALSE, stderr = FALSE)
+system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, file_csv_rel)), stdout = FALSE, stderr = FALSE)
+system2("python", shQuote(c(file.path(SCRIPT_BASE, "scripts/extract_seq.py"), ENTRY_DIR, opt$entry, file_csv_rel, "--aa")), stdout = FALSE, stderr = FALSE)
 
 # Read gene symbols to display next to annotated genes
   ## Read gene symbols file from the package data directory (alongside this R script)
@@ -581,9 +602,9 @@ opt$width <- max(opt$width, max(p$data$x) + total_offset)
 #Creates a visualization of the multiple sequence alignment with any amino acid indicated as black, and any gap indicated as grey
 ##msa_colors <- c("gray85","red","orange","green",rep(c("black"),each=20)) ##version of color scale for domains
 msa_colors <- c("gray85",rep(c("black"),each=30))
-aa <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.fa"))
-msa_pre <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.fa"))
-msa <- file.path(ENTRY_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.ids_only.fa"))
+aa <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".csv.aa.fa"))
+msa_pre <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.fa"))
+msa <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".csv.aa.no_all_gap_columns.ids_only.fa"))
 
 #trimal removes columns where every sequence is a gap, leaving within-sequence gaps intact for the MSA visualization
 system2("trimal", shQuote(c("-in", aa, "-out", msa_pre, "-noallgaps")), stdout = FALSE, stderr = FALSE)
@@ -874,7 +895,7 @@ if (nrow(feat) == 0L) {
 } else {
 
 # ---- Export aligned coordinates for provenance --------------------------------
-aligned_out <- file.path(ENTRY_DIR, paste0(opt$write, ".features_aligned.txt"))
+aligned_out <- file.path(RUN_ASSETS_DIR, paste0(opt$write, ".features_aligned.txt"))
 export_cols <- c("label", "feature",
                  "aa_start", "aa_end",           # original unaligned coords
                  "aa_start_col", "aa_end_col")   # aligned MSA columns
