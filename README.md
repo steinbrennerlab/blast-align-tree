@@ -274,7 +274,11 @@ bat-genome-selector
   the current working directory so you can quickly jump back to prior
   results.
 
-## Example output
+## Full Tutorial
+
+The tutorial commands below use the default files included in the repo clone. If you start from a new directory, `blast-align-tree-fetch` will download the genomes and sample dataset, but not environment and hmm files.
+
+### Generate a simple tree
 
 The example below runs the pipeline for a SERK query and redraws the
 resulting tree with a new subnode/outgroup. It searches three genomes
@@ -311,20 +315,7 @@ segfault if they contain spaces or backslashes that the shell misparses.
 <!-- TODO: regenerate images/tree.png from the SERK run above -->
 ![](images/tree.png)
 
-## Full Tutorial
-
-The tutorial commands below use the default genome set, which already
-includes everything needed:
-
-```
-blast-align-tree-fetch
-```
-
-That pulls TAIR10cds, TAIR10protein, Pvul218cds, Vung469cds, Niben261
-proteins, and the Klepikova expression atlas subset (into `./datasets/`),
-and runs `makeblastdb` on each FASTA automatically.
-
-### Run blast-align-tree for ACC Oxidase
+### Run blast-align-tree for a different gene, ACC Oxidase
 
 Find 15 homologs of Arabidopsis ACC Oxidase 1 from three plant genomes
 using `tblastn` against complete CDS databases. `-q` specifies the query
