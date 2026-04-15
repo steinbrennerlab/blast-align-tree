@@ -37,6 +37,7 @@
 !/install_r_deps.R
 !/LICENSE
 !/pyproject.toml
+!/RELEASE_NOTES_*.md
 
 # Python package (sources, R script, helper scripts, gene_symbols.txt, manifest)
 !/blast_align_tree
