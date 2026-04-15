@@ -188,7 +188,7 @@ populated — **skip this section** unless you want to refresh the hosted
 set or pull additional opt-in genomes with `--all`.
 
 For pip-only installs (or to re-pull a hosted asset cleanly), fetch
-from your project directory:
+into your project directory:
 
 ```
 blast-align-tree-fetch               # default set 🌱 🌿 🫘 🫛 🍅 📊
@@ -233,10 +233,6 @@ Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 Drop any FASTA into `./genomes/` — no manifest edit, no reinstall
 needed. See [Adding a new genome](#adding-a-new-genome) below.
 
-**Updating to a newer release** (when one is published): `pip install
---upgrade blast-align-tree`. Newer versions may ship an expanded
-manifest pointing at additional hosted genomes.
-
 ## GUI: `bat-genome-selector`
 
 The easiest way to build a valid `blast-align-tree` invocation is the
@@ -276,7 +272,9 @@ bat-genome-selector
 
 ## Full Tutorial
 
-The tutorial commands below use the default files included in the repo clone. If you start from a new directory, `blast-align-tree-fetch` will download the genomes and sample dataset, but not environment and hmm files.
+The tutorial commands below use the default files included in the repo clone. 
+If you start from a new directory, `blast-align-tree-fetch` will download the 
+genomes and sample dataset, but not environment and hmm files. Make sure to set up all packages, as described in the Installation section Steps 1-4.
 
 ### Generate a simple tree
 
@@ -312,7 +310,6 @@ already wrapped in double quotes — keep the quotes when copy-pasting,
 especially on Windows, where unquoted paths can cause `Rscript` to
 segfault if they contain spaces or backslashes that the shell misparses.
 
-<!-- TODO: regenerate images/tree.png from the SERK run above -->
 ![](images/tree.png)
 
 ### Run blast-align-tree for a different gene, ACC Oxidase
@@ -348,7 +345,6 @@ matched to the AtGenExpress / eFP browser tissue naming). The overlay
 TSV is fetched automatically into `./datasets/` by
 `blast-align-tree-fetch`. The screenshot below shows the heatmap version:
 
-<!-- TODO: regenerate images/ACO-tree-1.png (heatmap version) from the ACO run above -->
 ![](images/ACO-tree-1.png)
 
 A separate PDF with `.MSA.pdf` appended shows a cartoon alignment — useful
@@ -356,7 +352,6 @@ for spotting large differences in domain architecture. Open the
 underlying FASTA files in `genes_alignments_trees/` to inspect the
 alignment in detail.
 
-<!-- TODO: regenerate images/ACO-tree-2.png (.MSA.pdf cartoon alignment) -->
 ![](images/ACO-tree-2.png)
 
 ### Redraw the ACC Oxidase tree
@@ -381,7 +376,6 @@ Rscript "<bundled-visualize_tree.r>" -e AT2G19590.1 -b ACO_v3 \
         --subdir "runs/<TIMESTAMP>" -a AT2G38240 -n 58 -k 1 -l 0 -m 2
 ```
 
-<!-- TODO: regenerate images/ACO-tree-3.png -->
 ![](images/ACO-tree-3.png)
 
 The `-n` option is especially helpful for extracting a subset of the tree
@@ -428,11 +422,6 @@ BLAST database. Both the pipeline and `bat-genome-selector`
 auto-discover any `.fa`, `.faa`, `.fas`, `.fasta`, or `.fna` file in
 `./genomes/` and its subfolders (so `./genomes/mygroup/foo.fa` works the
 same as `./genomes/foo.fa`).
-
-Want to contribute a new genome to the hosted set so everyone who
-`pip install`s the package can fetch it? Open an issue or PR —
-`scripts/populate_manifest.py` is the helper we use to regenerate the
-manifest from staged release assets.
 
 For each new genome you need a local BLAST database.
 
@@ -512,17 +501,4 @@ a quick sanity check that any clades you care about are stable across
 inference methods.
 
 Use repeated rounds of querying to refine your trees, search different
-genome versions, and compare aligners / tree builders before drawing
-strong conclusions.
-
-## Future features
-
-We are currently working on:
-
-1. Iterative BLAST using a first set of hits as secondary queries
-2. Better organization of query and sub-query folders
-3. Displaying a subsequence of the MSA in the alignment PDF
-4. Richer motif / HMM visualization overlaid on the MSA
-
-If you'd like to contribute, reach out to Ben and Adam:
-`bdshep@uw.edu` and `astein10@uw.edu`.
+genome versions, and compare aligners / tree builders in order to draw strong conclusions about your gene family of interest.
