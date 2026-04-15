@@ -230,21 +230,28 @@ blast-align-tree -q AT2G19590.1 -qdbs TAIR10cds.fa \
 This creates `AT2G19590.1/` with report files at the run root and BLAST
 hit FASTAs / per-genome summaries under `hits/`.
 
-A powerful feature of `ggtree` is the ability to plot associated data. By
-default the tree PDF includes log2(fold-change) data from two RNAseq
-datasets ([Bjornsen et al. 2021](https://www.nature.com/articles/s41477-021-00874-5),
-Arabidopsis, and [Steinbrenner et al.
-2021](https://onlinelibrary.wiley.com/doi/10.1111/tpj.15732?af=R), cowpea).
+A powerful feature of `ggtree` is the ability to plot associated data.
+Each run produces two complementary tree PDFs:
 
-<!-- TODO: regenerate images/ACO-tree-1.png from the ACO run above -->
+1. **Text version** — gene symbols and dataset values printed as labels
+   next to each tip.
+2. **Heatmap version** — the same tree with associated data rendered as
+   a coloured heatmap alongside the tips.
+
+By default, both include expression data from the [Klepikova *Arabidopsis*
+expression atlas](https://pubmed.ncbi.nlm.nih.gov/26923014/) (headers are
+matched to the AtGenExpress / eFP browser tissue naming). The screenshot
+below shows the heatmap version:
+
+<!-- TODO: regenerate images/ACO-tree-1.png (heatmap version) from the ACO run above -->
 ![](images/ACO-tree-1.png)
 
-A second PDF with `.msa` appended shows a cartoon alignment — useful for
-spotting large differences in domain architecture. Open the underlying
-`.fasta` files in the run folder (or `hits/`) to inspect the alignment in
-detail.
+A separate PDF with `.msa` appended shows a cartoon alignment — useful
+for spotting large differences in domain architecture. Open the
+underlying `.fasta` files in the run folder (or `hits/`) to inspect the
+alignment in detail.
 
-<!-- TODO: regenerate images/ACO-tree-2.png -->
+<!-- TODO: regenerate images/ACO-tree-2.png (.msa cartoon alignment) -->
 ![](images/ACO-tree-2.png)
 
 ### Redraw the ACC Oxidase tree
@@ -362,6 +369,30 @@ Arabidopsis sequences.
 
 <!-- TODO: regenerate images/nimin-with-tobacco.png from the run above -->
 ![](images/nimin-with-tobacco.png)
+
+### Rebuild the NIMIN tree with MAFFT and RAxML
+
+By default the pipeline aligns with Clustal Omega and infers the tree
+with FastTree, but both are swappable. The command below rebuilds the
+same NIMIN-1 tree (Arabidopsis + *N. benthamiana* + tobacco) using
+**MAFFT** in `linsi` mode and **RAxML-NG** for the tree inference:
+
+```
+blast-align-tree --blast_type blastp \
+                 --aligner mafft --mafft_mode linsi \
+                 --tree_builder RAxML \
+                 -q AT1G02450.1 -qdbs TAIR10protein.fa \
+                 -n 10 10 10 \
+                 -dbs TAIR10protein.fa \
+                       Niben261_genome.annotation.proteins.fasta \
+                       Nitab-v4.5_proteins_Edwards2017.fasta \
+                 -hdr gene: id id
+```
+
+RAxML-NG is noticeably slower than FastTree but provides maximum-
+likelihood branch support via bootstrapping. Comparing the two trees is
+a quick sanity check that any clades you care about are stable across
+inference methods.
 
 Use repeated rounds of querying to refine your trees, search different
 genome versions, and compare aligners / tree builders before drawing
