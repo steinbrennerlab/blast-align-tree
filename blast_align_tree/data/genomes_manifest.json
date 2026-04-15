@@ -1,5 +1,5 @@
 {
-  "_comment": "Genome files hosted externally. Populate url/sha256/size_mb when uploading release assets.",
+  "_comment": "Genome files hosted externally. Populate url/sha256/size_mb when uploading release assets. 'filename' is relative to the fetch destination (./genomes by default) — use a subfolder like 'animals/foo.fa' to sort fetched files.",
   "base_url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0",
   "genomes": {
     "TAIR10cds": {
@@ -8,6 +8,7 @@
       "sha256": null,
       "size_mb": null,
       "default": true,
+      "emoji": "🌱",
       "description": "Arabidopsis thaliana CDS (TAIR10)"
     },
     "TAIR10protein": {
@@ -16,6 +17,7 @@
       "sha256": null,
       "size_mb": null,
       "default": true,
+      "emoji": "🌿",
       "description": "Arabidopsis thaliana proteins (TAIR10)"
     },
     "Pvul218cds": {
@@ -23,8 +25,18 @@
       "url": null,
       "sha256": null,
       "size_mb": null,
+      "default": true,
+      "emoji": "🫘",
+      "description": "Phaseolus vulgaris CDS (common bean, v2.1)"
+    },
+    "Vung469cds": {
+      "filename": "Vung469cds.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
       "default": false,
-      "description": "Phaseolus vulgaris CDS (v2.1)"
+      "emoji": "🫛",
+      "description": "Vigna unguiculata CDS (cowpea, v1.1)"
     },
     "Niben261_proteins": {
       "filename": "Niben261_genome.annotation.proteins.fasta",
@@ -32,7 +44,80 @@
       "sha256": null,
       "size_mb": null,
       "default": false,
+      "emoji": "🍅",
       "description": "Nicotiana benthamiana proteins (v2.6.1)"
+    },
+    "human_cds": {
+      "filename": "animals/human_cds_canonical.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🧑",
+      "description": "Homo sapiens canonical CDS"
+    },
+    "mouse_cds": {
+      "filename": "animals/mouse_cds_canonical.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🐭",
+      "description": "Mus musculus canonical CDS"
+    },
+    "rat_cds": {
+      "filename": "animals/rat_cds_canonical.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🐀",
+      "description": "Rattus norvegicus canonical CDS"
+    },
+    "chimp_cds": {
+      "filename": "animals/chimp_cds_canonical.fa",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🐒",
+      "description": "Pan troglodytes canonical CDS"
+    },
+    "zebrafish_cds": {
+      "filename": "animals/D_rerio__GRCz12tu_cds.fna",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🐟",
+      "description": "Danio rerio CDS (GRCz12tu)"
+    },
+    "fly_cds": {
+      "filename": "animals/D_melanogaster_R6+_ISO1_MT_cds.fna",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🪰",
+      "description": "Drosophila melanogaster CDS (R6+ ISO1 MT)"
+    },
+    "worm_cds": {
+      "filename": "animals/C_elegans_WBcel235_cds.fna",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🪱",
+      "description": "Caenorhabditis elegans CDS (WBcel235)"
+    },
+    "yeast_orfs": {
+      "filename": "animals/S288C_ref_ORF.fasta",
+      "url": null,
+      "sha256": null,
+      "size_mb": null,
+      "default": false,
+      "emoji": "🍞",
+      "description": "Saccharomyces cerevisiae S288C reference ORFs"
     }
   }
 }

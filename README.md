@@ -42,8 +42,8 @@ pip install -e .
 
 ### External tools (must be on PATH)
 
-`pip` cannot install these — use conda/mamba or your system package manager.
-Conda YAML files are provided under `environments/`.
+`pip` cannot install these — use conda/mamba or your system package
+manager.
 
 - **BLAST+** (`makeblastdb`, `blastdbcmd`, `tblastn`, `blastp`, `psiblast`)
 - **MAFFT** (≥ 7) — default aligner
@@ -53,6 +53,41 @@ Conda YAML files are provided under `environments/`.
 - **R** with `ggtree`, `ape`, `phytools`, `ggplot2`, `optparse`, `treeio`,
   `tidytree`, `broom`
 - **HMMER** (`hmmscan`, `hmmpress`) — optional, only needed for `--hmm`
+
+Conda YAML files covering all of the above live under `environments/`.
+Pick the one for your platform and create an env:
+
+**conda (Linux):**
+
+```
+conda env create -f environments/bat-environment-linux.yml
+conda activate bat
+pip install blast-align-tree
+```
+
+**mamba / micromamba (Linux — faster solver):**
+
+```
+mamba env create -f environments/bat-environment-linux.yml
+mamba activate bat
+pip install blast-align-tree
+```
+
+**macOS (Apple Silicon or Intel):**
+
+```
+mamba env create -f environments/bat-environment-ARMorIntel-mac.yml
+mamba activate bat
+pip install blast-align-tree
+```
+
+**Windows:**
+
+```
+mamba env create -f environments/bat-environment-windows.yml
+mamba activate bat
+pip install blast-align-tree
+```
 
 Verify everything is wired up:
 
@@ -75,14 +110,30 @@ This produces `kinase.hmm.h3f`, `.h3i`, `.h3m`, `.h3p` alongside the input.
 
 ### Fetching genome databases
 
-Genome FASTAs are too large to bundle in the pip package. Download the
-default set (Arabidopsis TAIR10 CDS + proteins) into `./genomes/`:
+Genome FASTAs are too large to bundle in the pip package. The downloader
+reads a manifest and drops the selected genomes into `./genomes/`:
 
 ```
-blast-align-tree-fetch               # default set
-blast-align-tree-fetch --all         # everything listed in the manifest
+blast-align-tree-fetch               # default set 🌱 🌿 🫘
+blast-align-tree-fetch --all         # everything listed in the manifest 🌍
 blast-align-tree-fetch --list        # show available genomes + sizes
 ```
+
+The default set 🌱🌿🫘 is:
+
+- 🌱 **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
+- 🌿 **TAIR10 proteins** — *Arabidopsis thaliana* proteome
+- 🫘 **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
+
+`--all` 🌍 additionally pulls the rest of the hosted lineup:
+
+- Other plants: 🫛 cowpea CDS, 🍅 *N. benthamiana* proteins
+- Animals / fungus (fetched into `./genomes/animals/`):
+  🧑 human CDS, 🐭 mouse CDS, 🐀 rat CDS, 🐒 chimp CDS,
+  🐟 zebrafish CDS, 🪰 fruit fly CDS, 🪱 *C. elegans* CDS,
+  🍞 yeast ORFs (*S. cerevisiae* S288C)
+
+Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 
 All pipeline runs should happen in the directory that contains
 `./genomes/`.

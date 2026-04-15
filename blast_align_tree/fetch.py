@@ -46,9 +46,10 @@ def decompress_gz(src: Path, dest: Path) -> None:
 
 
 def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
+    tag = f"{entry.get('emoji', '  ')} {name}"
     url = entry.get("url")
     if not url:
-        print(f"  [{name}] skipped — no url in manifest", file=sys.stderr)
+        print(f"  [{tag}] skipped — no url in manifest", file=sys.stderr)
         return False
 
     filename = entry.get("filename") or f"{name}.fa"
@@ -57,14 +58,14 @@ def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
     if final_path.exists():
         expected = entry.get("sha256")
         if expected and sha256_of(final_path) == expected:
-            print(f"  [{name}] already present, checksum OK")
+            print(f"  [{tag}] already present, checksum OK")
             return True
         if not expected:
-            print(f"  [{name}] already present (no checksum to verify)")
+            print(f"  [{tag}] already present (no checksum to verify)")
             return True
-        print(f"  [{name}] present but checksum mismatch — re-downloading")
+        print(f"  [{tag}] present but checksum mismatch — re-downloading")
 
-    print(f"  [{name}] downloading {url}")
+    print(f"  [{tag}] downloading {url}")
     if url.endswith(".gz"):
         tmp_gz = dest_dir / (filename + ".gz")
         download(url, tmp_gz)
@@ -78,10 +79,10 @@ def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
         got = sha256_of(final_path)
         if got != expected:
             final_path.unlink(missing_ok=True)
-            print(f"  [{name}] ERROR: sha256 mismatch (got {got}, expected {expected})",
+            print(f"  [{tag}] ERROR: sha256 mismatch (got {got}, expected {expected})",
                   file=sys.stderr)
             return False
-    print(f"  [{name}] done -> {final_path}")
+    print(f"  [{tag}] done -> {final_path}")
     return True
 
 
@@ -89,11 +90,12 @@ def cmd_list(manifest: dict) -> None:
     genomes = manifest["genomes"]
     print(f"Available genomes ({len(genomes)}):")
     for name, entry in genomes.items():
+        emoji = entry.get("emoji") or "  "
         default = " (default)" if entry.get("default") else ""
         size = entry.get("size_mb")
         size_str = f" ~{size} MB" if size else ""
         url_state = "" if entry.get("url") else " [not yet hosted]"
-        print(f"  {name}{default}{size_str}{url_state}")
+        print(f"  {emoji} {name}{default}{size_str}{url_state}")
         if entry.get("description"):
             print(f"      {entry['description']}")
 
