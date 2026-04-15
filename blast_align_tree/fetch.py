@@ -11,10 +11,66 @@ import gzip
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 import urllib.request
 from importlib.resources import files as _pkg_files
 from pathlib import Path
+
+
+_NUCL_CHARS = set("ATGCNUatgcnu")
+
+
+def dbtype_for(filepath: Path) -> str:
+    """Detect whether a FASTA file contains protein or nucleotide sequences."""
+    if filepath.suffix == ".faa":
+        return "prot"
+    seq_chars: list[str] = []
+    try:
+        with filepath.open(encoding="utf-8", errors="replace") as f:
+            in_seq = False
+            for line in f:
+                if line.startswith(">"):
+                    if in_seq:
+                        break
+                    in_seq = True
+                    continue
+                if in_seq:
+                    seq_chars.extend(line.strip())
+                    if len(seq_chars) >= 4000:
+                        break
+    except OSError:
+        return "nucl"
+    if not seq_chars:
+        return "nucl"
+    nucl_frac = sum(1 for c in seq_chars if c in _NUCL_CHARS) / len(seq_chars)
+    return "nucl" if nucl_frac >= 0.9 else "prot"
+
+
+def has_blastdb(filepath: Path) -> bool:
+    base = str(filepath)
+    return Path(base + ".nhr").exists() or Path(base + ".phr").exists()
+
+
+def run_makeblastdb(fasta: Path, tag: str) -> bool:
+    if has_blastdb(fasta):
+        print(f"  [{tag}] BLAST index already present")
+        return True
+    if shutil.which("makeblastdb") is None:
+        print(f"  [{tag}] WARNING: 'makeblastdb' not found on PATH — skipping index build",
+              file=sys.stderr)
+        return False
+    dt = dbtype_for(fasta)
+    print(f"  [{tag}] building BLAST {dt} index")
+    try:
+        subprocess.run(
+            ["makeblastdb", "-in", str(fasta), "-dbtype", dt, "-parse_seqids"],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"  [{tag}] ERROR: makeblastdb failed ({exc})", file=sys.stderr)
+        return False
+    return True
 
 
 _MANIFEST_PATH = _pkg_files("blast_align_tree") / "data" / "genomes_manifest.json"
@@ -45,7 +101,10 @@ def decompress_gz(src: Path, dest: Path) -> None:
         shutil.copyfileobj(gz_in, out)
 
 
-def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
+_FASTA_EXTS = {".fa", ".faa", ".fas", ".fasta", ".fna"}
+
+
+def fetch_one(name: str, entry: dict, dest_dir: Path, build_index: bool = True) -> bool:
     tag = f"{entry.get('emoji', '  ')} {name}"
     url = entry.get("url")
     if not url:
@@ -53,21 +112,28 @@ def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
         return False
 
     filename = entry.get("filename") or f"{name}.fa"
-    final_path = dest_dir / filename
+    entry_dest = entry.get("dest_dir")
+    base_dir = Path(entry_dest).resolve() if entry_dest else dest_dir
+    final_path = base_dir / filename
+    entry_build_index = build_index and final_path.suffix.lower() in _FASTA_EXTS
 
     if final_path.exists():
         expected = entry.get("sha256")
         if expected and sha256_of(final_path) == expected:
             print(f"  [{tag}] already present, checksum OK")
+            if entry_build_index:
+                run_makeblastdb(final_path, tag)
             return True
         if not expected:
             print(f"  [{tag}] already present (no checksum to verify)")
+            if entry_build_index:
+                run_makeblastdb(final_path, tag)
             return True
         print(f"  [{tag}] present but checksum mismatch — re-downloading")
 
     print(f"  [{tag}] downloading {url}")
     if url.endswith(".gz"):
-        tmp_gz = dest_dir / (filename + ".gz")
+        tmp_gz = base_dir / (filename + ".gz")
         download(url, tmp_gz)
         decompress_gz(tmp_gz, final_path)
         tmp_gz.unlink()
@@ -83,6 +149,8 @@ def fetch_one(name: str, entry: dict, dest_dir: Path) -> bool:
                   file=sys.stderr)
             return False
     print(f"  [{tag}] done -> {final_path}")
+    if entry_build_index:
+        run_makeblastdb(final_path, tag)
     return True
 
 
@@ -111,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true", help="List available genomes and exit")
     ap.add_argument("--dest", default="genomes",
                     help="Destination directory (default: ./genomes)")
+    ap.add_argument("--no-index", action="store_true",
+                    help="Skip running makeblastdb after download")
     args = ap.parse_args(argv)
 
     manifest = load_manifest()
@@ -139,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Fetching {len(selected)} genome(s) into {dest_dir}")
     failures = 0
     for name, entry in selected.items():
-        if not fetch_one(name, entry, dest_dir):
+        if not fetch_one(name, entry, dest_dir, build_index=not args.no_index):
             failures += 1
     return 1 if failures else 0
 

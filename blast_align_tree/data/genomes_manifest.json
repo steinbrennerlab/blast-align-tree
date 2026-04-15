@@ -34,7 +34,7 @@
       "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/Vung469cds.fa.gz",
       "sha256": "e60690efbdeac8792613c7073db86fb120ff773004c013dca8c5b7e289e94625",
       "size_mb": 11.2,
-      "default": false,
+      "default": true,
       "emoji": "🫛",
       "description": "Vigna unguiculata CDS (cowpea, v1.1)"
     },
@@ -109,6 +109,16 @@
       "default": false,
       "emoji": "🪱",
       "description": "Caenorhabditis elegans CDS (WBcel235)"
+    },
+    "klepikova_atlas": {
+      "filename": "klepikova_atlas_subset.tsv",
+      "dest_dir": "datasets",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/klepikova_atlas_subset.tsv",
+      "sha256": "fe59912600fbaefb83854c6c1ca944ab48a66c5d029b618ca86524ba9c24128b",
+      "size_mb": 1.2,
+      "default": true,
+      "emoji": "📊",
+      "description": "Klepikova Arabidopsis expression atlas subset (overlay dataset)"
     },
     "yeast_orfs": {
       "filename": "animals/S288C_ref_ORF.fasta",
