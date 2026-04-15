@@ -20,7 +20,58 @@ family of interest.
 
 ## Installation
 
-### Python package
+### Step 1. Clone the repo
+
+The recommended install path starts with a clone — it gives you the
+conda environment YAMLs, helper scripts, and `hmm_files/` locally so
+the commands below run as-is.
+
+```
+git clone https://github.com/steinbrennerlab/blast-align-tree.git
+cd blast-align-tree
+```
+
+### Step 2. Create the conda environment (non-Python tools)
+
+`blast-align-tree` calls several external CLIs that `pip` can't install:
+
+- **BLAST+** (`makeblastdb`, `blastdbcmd`, `tblastn`, `blastp`, `psiblast`)
+- **MAFFT** (≥ 7) — default aligner
+- **Clustal Omega** (`clustalo`) — alternative aligner
+- **trimAl** — alignment cleanup
+- **FastTree** and/or **RAxML-NG** — tree inference
+- **R** with `ggtree`, `ape`, `phytools`, `ggplot2`, `optparse`, `treeio`,
+  `tidytree`, `broom`
+- **HMMER** (`hmmscan`, `hmmpress`) — optional, only needed for `--hmm`
+
+Environment YAML files for each platform live under `environments/`.
+Create and activate the env with conda, mamba, or micromamba (mamba /
+micromamba are noticeably faster):
+
+**Linux:**
+
+```
+mamba env create -f environments/bat-environment-linux.yml
+mamba activate bat
+```
+
+**macOS (Apple Silicon or Intel):**
+
+```
+mamba env create -f environments/bat-environment-ARMorIntel-mac.yml
+mamba activate bat
+```
+
+**Windows:**
+
+```
+mamba env create -f environments/bat-environment-windows.yml
+mamba activate bat
+```
+
+### 3. Install the Python package
+
+From inside the activated env from Step 2:
 
 ```
 pip install blast-align-tree
@@ -34,59 +85,10 @@ This installs three console commands:
 | `bat-genome-selector` | Tkinter GUI for building `blast-align-tree` commands |
 | `blast-align-tree-fetch` | Download bundled genome FASTAs into `./genomes/` |
 
-From a fresh clone of this repo you can do an editable install instead:
+If you're developing against the repo, use an editable install instead:
 
 ```
 pip install -e .
-```
-
-### External tools (must be on PATH)
-
-`pip` cannot install these — use conda/mamba or your system package
-manager.
-
-- **BLAST+** (`makeblastdb`, `blastdbcmd`, `tblastn`, `blastp`, `psiblast`)
-- **MAFFT** (≥ 7) — default aligner
-- **Clustal Omega** (`clustalo`) — alternative aligner
-- **trimAl** — alignment cleanup
-- **FastTree** and/or **RAxML-NG** — tree inference
-- **R** with `ggtree`, `ape`, `phytools`, `ggplot2`, `optparse`, `treeio`,
-  `tidytree`, `broom`
-- **HMMER** (`hmmscan`, `hmmpress`) — optional, only needed for `--hmm`
-
-Conda YAML files covering all of the above live under `environments/`.
-Pick the one for your platform and create an env:
-
-**conda (Linux):**
-
-```
-conda env create -f environments/bat-environment-linux.yml
-conda activate bat
-pip install blast-align-tree
-```
-
-**mamba / micromamba (Linux — faster solver):**
-
-```
-mamba env create -f environments/bat-environment-linux.yml
-mamba activate bat
-pip install blast-align-tree
-```
-
-**macOS (Apple Silicon or Intel):**
-
-```
-mamba env create -f environments/bat-environment-ARMorIntel-mac.yml
-mamba activate bat
-pip install blast-align-tree
-```
-
-**Windows:**
-
-```
-mamba env create -f environments/bat-environment-windows.yml
-mamba activate bat
-pip install blast-align-tree
 ```
 
 Verify everything is wired up:
@@ -95,7 +97,21 @@ Verify everything is wired up:
 blast-align-tree --check-env
 ```
 
-### HMM profiles need `hmmpress`
+#### Skipping the clone
+
+If you don't want to clone the repo, you can grab just the environment
+YAML for your platform directly from GitHub and run `mamba env create
+-f <file>` against it:
+
+- Linux: [`bat-environment-linux.yml`](https://raw.githubusercontent.com/steinbrennerlab/blast-align-tree/main/environments/bat-environment-linux.yml)
+- macOS (Apple Silicon or Intel): [`bat-environment-ARMorIntel-mac.yml`](https://raw.githubusercontent.com/steinbrennerlab/blast-align-tree/main/environments/bat-environment-ARMorIntel-mac.yml)
+- Windows: [`bat-environment-windows.yml`](https://raw.githubusercontent.com/steinbrennerlab/blast-align-tree/main/environments/bat-environment-windows.yml)
+
+Then `pip install blast-align-tree` inside the env. Note that some
+tutorial commands (`hmmpress hmm_files/kinase.hmm`, the
+`scripts/populate_manifest.py` helper, etc.) assume a repo clone.
+
+### 4. Build HMM profiles with `hmmpress`
 
 The repo ships `.hmm` input files under `hmm_files/` (e.g.
 `hmm_files/kinase.hmm`) but **not** the `.h3*` binary indices — those are
@@ -108,22 +124,39 @@ hmmpress hmm_files/kinase.hmm
 
 This produces `kinase.hmm.h3f`, `.h3i`, `.h3m`, `.h3p` alongside the input.
 
-### Set up a project directory
+### Working directory
 
 `blast-align-tree` is filesystem-driven: it reads genome FASTAs from
-`./genomes/` and writes run outputs into the **current working directory**.
-Pick a project folder and run everything from there.
+`./genomes/` and writes run outputs into the **current working
+directory**. If you cloned the repo (the recommended install), run
+everything from the repo root — `./genomes/` and `./datasets/` are
+already in place.
+
+If you installed via pip without cloning, pick any project folder
+instead:
 
 ```
 mkdir ~/bat-project && cd ~/bat-project
 ```
 
-All commands below assume you've `cd`-ed into a project folder. You can
-keep several projects side-by-side; each has its own `./genomes/` and its
-own run outputs. Pipeline commands invoked from any other directory
-won't find your genomes.
+You can keep several projects side-by-side; each has its own
+`./genomes/` and its own run outputs. Pipeline commands invoked from
+any other directory won't find your genomes.
 
 ### Fetching bundled genome databases
+
+If you cloned the repo, `./genomes/` and `./datasets/` are already
+populated — **skip this section** unless you want to refresh the hosted
+set or pull additional opt-in genomes with `--all`.
+
+For pip-only installs (or to re-pull a hosted asset cleanly), fetch
+from your project directory:
+
+```
+blast-align-tree-fetch               # default set 🌱 🌿 🫘 🫛 🍅 📊
+blast-align-tree-fetch --all         # everything listed in the manifest 🌍
+blast-align-tree-fetch --list        # show available genomes + sizes
+```
 
 Genome FASTAs are too large to ship inside the pip package, so a small
 set of reference plant and animal genomes is hosted as GitHub release
@@ -131,33 +164,30 @@ assets. `blast-align-tree` ships a **manifest**
 (`blast_align_tree/data/genomes_manifest.json` inside the installed
 package) listing each hosted genome with its URL and sha256 checksum.
 The manifest is read-only from a user's perspective — you don't edit it
-directly. Instead, call the downloader from your project directory:
-
-```
-blast-align-tree-fetch               # default set 🌱 🌿 🫘 🍅
-blast-align-tree-fetch --all         # everything listed in the manifest 🌍
-blast-align-tree-fetch --list        # show available genomes + sizes
-```
+directly.
 
 Files land in `./genomes/`. Animal and fungal genomes sort into
 `./genomes/animals/`. Downloads are checksum-verified against the
 manifest and decompressed automatically, so re-running is safe — already
-present files are skipped if their hash matches.
+present files are skipped if their hash matches. After each successful
+download `blast-align-tree-fetch` runs `makeblastdb` on the FASTA (the
+nucleotide / protein mode is auto-detected), so the files are ready for
+the pipeline with no extra step. Pass `--no-index` to skip that.
 
-The default set 🌱🌿🫘🍅 is:
+The default set 🌱🌿🫘🫛🍅📊 is:
 
 - 🌱 **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
 - 🌿 **TAIR10 proteins** — *Arabidopsis thaliana* proteome
 - 🫘 **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
+- 🫛 **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences
 - 🍅 **Niben261 proteins** — *Nicotiana benthamiana* proteome (v2.6.1)
+- 📊 **Klepikova atlas subset** — *Arabidopsis* expression overlay
+  dataset (lands in `./datasets/`, not `./genomes/`)
 
-`--all` 🌍 additionally pulls the rest of the hosted lineup:
-
-- Other plants: 🫛 cowpea CDS
-- Animals / fungus (fetched into `./genomes/animals/`):
-  🧑 human CDS, 🐭 mouse CDS, 🐀 rat CDS, 🐒 chimp CDS,
-  🐟 zebrafish CDS, 🪰 fruit fly CDS, 🪱 *C. elegans* CDS,
-  🍞 yeast ORFs (*S. cerevisiae* S288C)
+`--all` 🌍 additionally pulls the rest of the hosted lineup
+(fetched into `./genomes/animals/`): 🧑 human CDS, 🐭 mouse CDS,
+🐀 rat CDS, 🐒 chimp CDS, 🐟 zebrafish CDS, 🪰 fruit fly CDS,
+🪱 *C. elegans* CDS, 🍞 yeast ORFs (*S. cerevisiae* S288C).
 
 Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 
@@ -209,16 +239,9 @@ bat-genome-selector
 ## Example output
 
 The example below runs the pipeline for a SERK query and redraws the
-resulting tree with a new subnode/outgroup. It searches three genomes:
-🌱 TAIR10cds (default), 🫘 Pvul218cds (default), and 🫛 Vung469cds
-(opt-in). If you only ran `blast-align-tree-fetch` with no arguments,
-grab cowpea too first:
-
-```
-blast-align-tree-fetch Vung469cds
-```
-
-Then:
+resulting tree with a new subnode/outgroup. It searches three genomes
+from the default fetched set: 🌱 TAIR10cds, 🫘 Pvul218cds, and 🫛
+Vung469cds.
 
 ```
 blast-align-tree -q AT4G33430.1 -qdbs TAIR10cds.fa \
@@ -250,20 +273,18 @@ segfault if they contain spaces or backslashes that the shell misparses.
 <!-- TODO: regenerate images/tree.png from the SERK run above -->
 ![](images/tree.png)
 
-## Tutorial
+## Full Tutorial
 
-The tutorial commands below use the four default genomes plus 🫛 cowpea
-(`Vung469cds`, opt-in). The fastest way to have everything ready is:
-
-```
-blast-align-tree-fetch --all
-```
-
-Or, if you prefer to pull only what the tutorial needs:
+The tutorial commands below use the default genome set, which already
+includes everything needed:
 
 ```
-blast-align-tree-fetch TAIR10cds TAIR10protein Pvul218cds Vung469cds Niben261_proteins
+blast-align-tree-fetch
 ```
+
+That pulls TAIR10cds, TAIR10protein, Pvul218cds, Vung469cds, Niben261
+proteins, and the Klepikova expression atlas subset (into `./datasets/`),
+and runs `makeblastdb` on each FASTA automatically.
 
 ### Run blast-align-tree for ACC Oxidase
 
@@ -294,8 +315,9 @@ Each run produces two complementary tree PDFs:
 
 By default, both include expression data from the [Klepikova *Arabidopsis*
 expression atlas](https://pubmed.ncbi.nlm.nih.gov/26923014/) (headers are
-matched to the AtGenExpress / eFP browser tissue naming). The screenshot
-below shows the heatmap version:
+matched to the AtGenExpress / eFP browser tissue naming). The overlay
+TSV is fetched automatically into `./datasets/` by
+`blast-align-tree-fetch`. The screenshot below shows the heatmap version:
 
 <!-- TODO: regenerate images/ACO-tree-1.png (heatmap version) from the ACO run above -->
 ![](images/ACO-tree-1.png)
