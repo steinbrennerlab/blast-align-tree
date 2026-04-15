@@ -1419,9 +1419,13 @@ def main():
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")
     rscript_path = _PACKAGE_DATA / "visualize_tree.r"
-    redraw_cmd = f"  Rscript {rscript_path} -e {entry} -b {write_arg} --subdir {subdir} -n <NODE>"
+    redraw_name = f"{write_arg}_redraw"
+    redraw_cmd = (
+        f'  Rscript "{rscript_path}" -e {entry} -b {redraw_name} '
+        f'--subdir "{subdir}" -n <NODE>'
+    )
     if args.datasets:
-        redraw_cmd += f" --datasets \"{args.datasets}\""
+        redraw_cmd += f' --datasets "{args.datasets}"'
     print(redraw_cmd)
 
 if __name__ == "__main__":

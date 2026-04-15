@@ -198,11 +198,14 @@ to reroot on an outgroup (`-a AT5G10290`) and zoom in on a subnode
 (`-n 45`):
 
 ```
-Rscript <bundled-visualize_tree.r> -e AT4G33430.1 -b SERK_tree \
-        --subdir runs/<TIMESTAMP> -a AT5G10290 -n 45
+Rscript "<bundled-visualize_tree.r>" -e AT4G33430.1 -b SERK_tree \
+        --subdir "runs/<TIMESTAMP>" -a AT5G10290 -n 45
 ```
 
-The bundled path is printed for you at the end of each pipeline run.
+The bundled path is printed for you at the end of each pipeline run,
+already wrapped in double quotes — keep the quotes when copy-pasting,
+especially on Windows, where unquoted paths can cause `Rscript` to
+segfault if they contain spaces or backslashes that the shell misparses.
 
 <!-- TODO: regenerate images/tree.png from the SERK run above -->
 ![](images/tree.png)
@@ -262,8 +265,8 @@ For example, reroot the default ACO tree on JRG21 (AT2G38240) and zoom
 into the ACO clade at node 58:
 
 ```
-Rscript <bundled-visualize_tree.r> -e AT2G19590.1 -b ACO_v3 \
-        --subdir runs/<TIMESTAMP> -a AT2G38240 -n 58 -k 1 -l 0 -m 2
+Rscript "<bundled-visualize_tree.r>" -e AT2G19590.1 -b ACO_v3 \
+        --subdir "runs/<TIMESTAMP>" -a AT2G38240 -n 58 -k 1 -l 0 -m 2
 ```
 
 <!-- TODO: regenerate images/ACO-tree-3.png -->
