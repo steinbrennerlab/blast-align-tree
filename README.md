@@ -69,6 +69,44 @@ mamba env create -f environments/bat-environment-windows.yml
 mamba activate bat
 ```
 
+#### Platform-specific gaps
+
+Only the Linux YAML is a complete one-shot install. The macOS and
+Windows YAMLs each cover a different half of the stack; fill in the
+missing pieces after creating the env.
+
+**macOS — R / plotting stack is not in the YAML.** The mac YAML ships
+the CLI tools (BLAST+, MAFFT, Clustal Omega, trimAl, FastTree,
+RAxML-NG, HMMER) plus Python, but not R or any of the tree-plotting
+packages — bioconda's R / Bioconductor coverage is patchy on Apple
+Silicon (`osx-arm64`), so R is installed via CRAN instead. Install R
+separately (e.g. `brew install r` or from
+[CRAN](https://cran.r-project.org/)) and then run the bundled installer
+to pull `ggtree`, `ggplot2`, `ape`, `phytools`, `tidytree`, `treeio`,
+`optparse`, `broom`, and `Biostrings`:
+
+```
+Rscript environments/install_r_deps.R
+```
+
+**Windows — external CLI tools are not in the YAML.** Bioconda doesn't
+build BLAST+, MAFFT, Clustal Omega, trimAl, FastTree, RAxML-NG, or
+HMMER for Windows, so the Windows YAML only provisions the R stack
+plus Python. Install the CLI tools from their vendors (add each to
+`PATH` after install):
+
+- [NCBI BLAST+](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/) (`ncbi-blast-*+-x64-win64.exe`)
+- [MAFFT](https://mafft.cbrc.jp/alignment/software/windows_without_cygwin.html) (all-in-one Windows build)
+- [RAxML-NG](https://github.com/amkozlov/raxml-ng/releases) (Windows zip)
+- [Clustal Omega](http://www.clustal.org/omega/) (Windows binary)
+- [FastTree](http://www.microbesonline.org/fasttree/#Install) (`FastTree.exe`)
+- [trimAl](https://github.com/inab/trimal/releases) (Windows build) — or compile from source
+- [HMMER](http://hmmer.org/download.html) — Windows users typically run it under WSL
+
+If you'd rather avoid hand-installing these, run the Linux YAML under
+**WSL2** (Ubuntu) and drive the pipeline from there — everything is in
+bioconda on that path.
+
 ### 3. Install the Python package
 
 From inside the activated env from Step 2:
@@ -448,7 +486,8 @@ blast-align-tree --blast_type blastp \
                  -dbs TAIR10protein.fa \
                        Niben261_genome.annotation.proteins.fasta \
                        Nitab-v4.5_proteins_Edwards2017.fasta \
-                 -hdr gene: id id
+                 -hdr gene: id id \
+				 --hmm kinase.hmm
 ```
 
 The run produces a tree PDF with tobacco SOBIR1 homologs slotted in
