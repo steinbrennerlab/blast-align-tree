@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blast-align-tree"
-version = "1.0.0"
+version = "1.0.1"
 description = "BLAST, align, and build phylogenetic trees from genomic databases"
 readme = "README.md"
 license = "MIT"
