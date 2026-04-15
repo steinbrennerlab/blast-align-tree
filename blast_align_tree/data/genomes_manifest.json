@@ -43,7 +43,7 @@
       "url": null,
       "sha256": null,
       "size_mb": null,
-      "default": false,
+      "default": true,
       "emoji": "🍅",
       "description": "Nicotiana benthamiana proteins (v2.6.1)"
     },

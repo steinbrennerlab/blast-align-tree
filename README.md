@@ -119,15 +119,16 @@ blast-align-tree-fetch --all         # everything listed in the manifest 🌍
 blast-align-tree-fetch --list        # show available genomes + sizes
 ```
 
-The default set 🌱🌿🫘 is:
+The default set 🌱🌿🫘🍅 is:
 
 - 🌱 **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
 - 🌿 **TAIR10 proteins** — *Arabidopsis thaliana* proteome
 - 🫘 **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
+- 🍅 **Niben261 proteins** — *Nicotiana benthamiana* proteome (v2.6.1)
 
 `--all` 🌍 additionally pulls the rest of the hosted lineup:
 
-- Other plants: 🫛 cowpea CDS, 🍅 *N. benthamiana* proteins
+- Other plants: 🫛 cowpea CDS
 - Animals / fungus (fetched into `./genomes/animals/`):
   🧑 human CDS, 🐭 mouse CDS, 🐀 rat CDS, 🐒 chimp CDS,
   🐟 zebrafish CDS, 🪰 fruit fly CDS, 🪱 *C. elegans* CDS,
@@ -350,12 +351,12 @@ Inspecting the first record of `Nitab-v4.5_proteins_Edwards2017.fasta`
 shows that headers use a gene id followed by a description — `-hdr id`
 keeps just the first token.
 
-Now re-run the NIMIN-1 tree from the earlier BLASTP example, but this
-time include tobacco as a third database:
+Now build a SOBIR1 homolog tree across Arabidopsis, *N. benthamiana*,
+and the freshly added tobacco proteome:
 
 ```
 blast-align-tree --blast_type blastp \
-                 -q AT1G02450.1 -qdbs TAIR10protein.fa \
+                 -q AT2G31880.1 -qdbs TAIR10protein.fa \
                  -n 10 10 10 \
                  -dbs TAIR10protein.fa \
                        Niben261_genome.annotation.proteins.fasta \
@@ -363,25 +364,24 @@ blast-align-tree --blast_type blastp \
                  -hdr gene: id id
 ```
 
-The run folder now contains a tree comparable to the original, with
-tobacco homologs slotted in alongside the *N. benthamiana* and
-Arabidopsis sequences.
+The run folder contains a tree with tobacco SOBIR1 homologs slotted in
+alongside the *N. benthamiana* and Arabidopsis sequences.
 
-<!-- TODO: regenerate images/nimin-with-tobacco.png from the run above -->
-![](images/nimin-with-tobacco.png)
+<!-- TODO: regenerate images/SOBIR1_with_ntab.png from the run above -->
+![](images/SOBIR1_with_ntab.png)
 
-### Rebuild the NIMIN tree with MAFFT and RAxML
+### Rebuild the SOBIR1 tree with MAFFT and RAxML
 
 By default the pipeline aligns with Clustal Omega and infers the tree
 with FastTree, but both are swappable. The command below rebuilds the
-same NIMIN-1 tree (Arabidopsis + *N. benthamiana* + tobacco) using
+same SOBIR1 tree (Arabidopsis + *N. benthamiana* + tobacco) using
 **MAFFT** in `linsi` mode and **RAxML-NG** for the tree inference:
 
 ```
 blast-align-tree --blast_type blastp \
                  --aligner mafft --mafft_mode linsi \
                  --tree_builder RAxML \
-                 -q AT1G02450.1 -qdbs TAIR10protein.fa \
+                 -q AT2G31880.1 -qdbs TAIR10protein.fa \
                  -n 10 10 10 \
                  -dbs TAIR10protein.fa \
                        Niben261_genome.annotation.proteins.fasta \
