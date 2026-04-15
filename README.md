@@ -108,16 +108,41 @@ hmmpress hmm_files/kinase.hmm
 
 This produces `kinase.hmm.h3f`, `.h3i`, `.h3m`, `.h3p` alongside the input.
 
-### Fetching genome databases
+### Set up a project directory
 
-Genome FASTAs are too large to bundle in the pip package. The downloader
-reads a manifest and drops the selected genomes into `./genomes/`:
+`blast-align-tree` is filesystem-driven: it reads genome FASTAs from
+`./genomes/` and writes run outputs into the **current working directory**.
+Pick a project folder and run everything from there.
 
 ```
-blast-align-tree-fetch               # default set 🌱 🌿 🫘
+mkdir ~/bat-project && cd ~/bat-project
+```
+
+All commands below assume you've `cd`-ed into a project folder. You can
+keep several projects side-by-side; each has its own `./genomes/` and its
+own run outputs. Pipeline commands invoked from any other directory
+won't find your genomes.
+
+### Fetching bundled genome databases
+
+Genome FASTAs are too large to ship inside the pip package, so a small
+set of reference plant and animal genomes is hosted as GitHub release
+assets. `blast-align-tree` ships a **manifest**
+(`blast_align_tree/data/genomes_manifest.json` inside the installed
+package) listing each hosted genome with its URL and sha256 checksum.
+The manifest is read-only from a user's perspective — you don't edit it
+directly. Instead, call the downloader from your project directory:
+
+```
+blast-align-tree-fetch               # default set 🌱 🌿 🫘 🍅
 blast-align-tree-fetch --all         # everything listed in the manifest 🌍
 blast-align-tree-fetch --list        # show available genomes + sizes
 ```
+
+Files land in `./genomes/`. Animal and fungal genomes sort into
+`./genomes/animals/`. Downloads are checksum-verified against the
+manifest and decompressed automatically, so re-running is safe — already
+present files are skipped if their hash matches.
 
 The default set 🌱🌿🫘🍅 is:
 
@@ -136,8 +161,13 @@ The default set 🌱🌿🫘🍅 is:
 
 Run `blast-align-tree-fetch --list` for the full lineup and sizes.
 
-All pipeline runs should happen in the directory that contains
-`./genomes/`.
+**Using your own genome files instead of (or alongside) the hosted set?**
+Drop any FASTA into `./genomes/` — no manifest edit, no reinstall
+needed. See [Adding a new genome](#adding-a-new-genome) below.
+
+**Updating to a newer release** (when one is published): `pip install
+--upgrade blast-align-tree`. Newer versions may ship an expanded
+manifest pointing at additional hosted genomes.
 
 ## GUI: `bat-genome-selector`
 
@@ -178,9 +208,17 @@ bat-genome-selector
 
 ## Example output
 
-The default genome set includes Arabidopsis TAIR10 CDS. The example below
-runs the pipeline for a SERK query and redraws the resulting tree with a
-new subnode/outgroup:
+The example below runs the pipeline for a SERK query and redraws the
+resulting tree with a new subnode/outgroup. It searches three genomes:
+🌱 TAIR10cds (default), 🫘 Pvul218cds (default), and 🫛 Vung469cds
+(opt-in). If you only ran `blast-align-tree-fetch` with no arguments,
+grab cowpea too first:
+
+```
+blast-align-tree-fetch Vung469cds
+```
+
+Then:
 
 ```
 blast-align-tree -q AT4G33430.1 -qdbs TAIR10cds.fa \
@@ -213,6 +251,19 @@ segfault if they contain spaces or backslashes that the shell misparses.
 ![](images/tree.png)
 
 ## Tutorial
+
+The tutorial commands below use the four default genomes plus 🫛 cowpea
+(`Vung469cds`, opt-in). The fastest way to have everything ready is:
+
+```
+blast-align-tree-fetch --all
+```
+
+Or, if you prefer to pull only what the tutorial needs:
+
+```
+blast-align-tree-fetch TAIR10cds TAIR10protein Pvul218cds Vung469cds Niben261_proteins
+```
 
 ### Run blast-align-tree for ACC Oxidase
 
@@ -319,8 +370,20 @@ blast-align-tree -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 \
 
 ### Adding a new genome
 
-You can drop additional genomes into `./genomes/` and use them alongside
-the bundled ones. For each new genome you need a local BLAST database.
+The manifest used by `blast-align-tree-fetch` covers only the **hosted
+set** shipped with the package. Using your own FASTA does **not** require
+editing the manifest — just drop the file into `./genomes/` and build a
+BLAST database. Both the pipeline and `bat-genome-selector`
+auto-discover any `.fa`, `.faa`, `.fas`, `.fasta`, or `.fna` file in
+`./genomes/` and its subfolders (so `./genomes/mygroup/foo.fa` works the
+same as `./genomes/foo.fa`).
+
+Want to contribute a new genome to the hosted set so everyone who
+`pip install`s the package can fetch it? Open an issue or PR —
+`scripts/populate_manifest.py` is the helper we use to regenerate the
+manifest from staged release assets.
+
+For each new genome you need a local BLAST database.
 
 For CDS files:
 
