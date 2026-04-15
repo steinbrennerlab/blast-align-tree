@@ -178,7 +178,7 @@ Tkinter GUI. Launch it from a directory that contains a `genomes/` folder:
 bat-genome-selector
 ```
 
-<!-- TODO: add screenshot images/gui.png once the GUI is regenerated -->
+![](images/gui.png)
 
 ### Key features
 
