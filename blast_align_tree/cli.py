@@ -621,7 +621,8 @@ def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str
     for db, seq in zip(add_dbs, add_seqs):
         _add_translation_from_db(genomes_dir, entry_dir, db, seq)
 
-def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str):
+def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str, raxml_seed: Optional[int] = None):
+    
     entry_dir = workdir / entry
     in_fa = entry_dir / f"{entry}.parse.merged.fa"
     seq_count = count_fasta_records(in_fa)
@@ -632,15 +633,12 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             "This usually means BLAST returned only one unique hit for the query."
         )
 
-    # Canonical alignment filename (independent of aligner)
     aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
 
     print(f"→ Aligning sequences with {aligner} ...")
     align_start = datetime.now()
 
-
     if aligner == "clustalo":
-        # Clustal Omega writes directly to output file
         run([
             "clustalo",
             "-i", str(in_fa),
@@ -650,24 +648,31 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
     elif aligner == "mafft":
         cmd = ["mafft", "--thread", str(threads)]
-
         if mafft_mode == "auto":
             cmd.append("--auto")
         elif mafft_mode == "linsi":
             cmd += ["--localpair", "--maxiterate", "1000"]
+        elif mafft_mode == "ginsi":
+            cmd += ["--globalpair", "--maxiterate", "1000"]
         elif mafft_mode == "einsi":
-            cmd += ["--genafpair", "--maxiterate", "1000"]
+            cmd += ["--ep", "0", "--genafpair", "--maxiterate", "1000"]
+        elif mafft_mode == "fftnsi":
+            cmd += ["--retree", "2", "--maxiterate", "2"]
+        elif mafft_mode == "fftnsi-1000":
+            cmd += ["--retree", "2", "--maxiterate", "1000"]
         elif mafft_mode == "fftns2":
-            cmd += ["--retree", "2"]
-
+            cmd += ["--retree", "2", "--maxiterate", "0"]
+        elif mafft_mode == "fftns1":
+            cmd += ["--retree", "1", "--maxiterate", "0"]
+        elif mafft_mode == "nwnsi":
+            cmd += ["--retree", "2", "--maxiterate", "2", "--nofft"]
+        elif mafft_mode == "nwns2":
+            cmd += ["--retree", "2", "--maxiterate", "0", "--nofft"]
+        elif mafft_mode == "parttree":
+            cmd += ["--retree", "1", "--maxiterate", "0", "--nofft", "--parttree"]
         cmd.append(str(in_fa))
 
-        result = subprocess.run(
-            cmd,
-            text=True,
-            capture_output=True
-        )
-
+        result = subprocess.run(cmd, text=True, capture_output=True)
         mafft_log = entry_dir / "mafft.log"
         mafft_log.write_text(result.stderr, encoding="utf-8")
 
@@ -677,35 +682,25 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
         strategy = "unknown"
         lines = result.stderr.splitlines()
-
         for i, line in enumerate(lines):
             line = line.strip()
-
-            # Case 1: single-line strategy
             if line.startswith("Strategy") and len(line.split()) > 1:
                 strategy = line
                 break
-
             if line.startswith("Using"):
                 strategy = line
                 break
-
-            # Case 2: "Strategy:" followed by next line
             if line == "Strategy:" and i + 1 < len(lines):
                 strategy = f"Strategy {lines[i + 1].strip()}"
                 break
 
         print(f"  MAFFT strategy: {strategy}")
 
-
-        # Keep only FASTA output
         fasta_lines = [
             line for line in result.stdout.splitlines()
             if line.startswith(">") or re.match(r"^[A-Za-z\-\*]+$", line)
         ]
-
         aln_fa.write_text("\n".join(fasta_lines) + "\n", encoding="utf-8")
-
 
     align_end = datetime.now()
     print(f"  Alignment time: {align_end - align_start}")
@@ -715,37 +710,103 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
     if tree_builder == "FastTree":
         run(["FastTree", "-out", str(tree_out), str(aln_fa)])
+        tree_end = datetime.now()
+        print(f"  Tree build time: {tree_end - tree_start}")
 
     elif tree_builder == "RAxML":
         prefix = f"{entry}.raxmlng"
         prefix_path = entry_dir / prefix
 
-        # ---- Step 1: ML tree search ----
+        # Determine seeds for reproducibility
+        if raxml_seed is not None:
+            seed_ml = raxml_seed
+            seed_bs = raxml_seed + 1  # Different seed for bootstrap
+            print(f"  [RAxML] Using fixed seeds for reproducibility: ML={seed_ml}, Bootstrap={seed_bs}")
+        else:
+            seed_ml = None
+            seed_bs = None
+
+        # ---- Step 1: ML tree search with retry fallback ----
         print("  [RAxML] Running ML tree search...")
-        run([
-            "raxml-ng",
-            "--msa", str(aln_fa),
-            "--model", "LG+G",
-            "--threads", str(threads),
-            "--blopt", "nr_safe",
-            "--prefix", prefix
-        ], cwd=entry_dir)
+        ml_start = datetime.now()
+        ml_success = False
+        for attempt in range(2):
+            current_threads = max(1, threads - attempt)
+            if attempt > 0:
+                print(f"    ⚠ Retrying with {current_threads} thread(s)...")
+                for pattern in [f"{prefix}.raxml.log", f"{prefix}.raxml.startTree"]:
+                    for fp in entry_dir.glob(pattern):
+                        fp.unlink(missing_ok=True)
+            
+            try:
+                cmd = [
+                    "raxml-ng",
+                    "--msa", str(aln_fa),
+                    "--model", "LG+G",
+                    "--threads", str(current_threads),
+                    "--prefix", prefix
+                ]
+                if seed_ml is not None:
+                    cmd.extend(["--seed", str(seed_ml)])
+                
+                run(cmd, cwd=entry_dir)
+                ml_success = True
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt == 0:
+                    continue
+                else:
+                    raise
+
+        if not ml_success:
+            raise SystemExit("RAxML ML tree search failed after retries")
+
+        ml_end = datetime.now()
+        print(f"    ML search time: {ml_end - ml_start}")
 
         best_tree = entry_dir / f"{prefix}.raxml.bestTree"
         if not best_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce a bestTree: {best_tree}")
 
-        # ---- Step 2: Bootstrap replicates ----
+        # ---- Step 2: Bootstrap replicates (also with retry) ----
         print("  [RAxML] Running bootstrap replicates...")
-        run([
-            "raxml-ng",
-            "--bootstrap",
-            "--msa", str(aln_fa),
-            "--model", "LG+G",
-            "--threads", str(threads),
-            "--bs-trees", "100",   # <-- adjust as desired
-            "--prefix", prefix
-        ], cwd=entry_dir)
+        bs_start = datetime.now()
+        bs_success = False
+        for attempt in range(2):
+            current_threads = max(1, threads - attempt)
+            if attempt > 0:
+                print(f"    ⚠ Retrying bootstrap with {current_threads} thread(s)...")
+                for pattern in [f"{prefix}.raxml.log"]:
+                    for fp in entry_dir.glob(pattern):
+                        fp.unlink(missing_ok=True)
+            
+            try:
+                cmd = [
+                    "raxml-ng",
+                    "--bootstrap",
+                    "--msa", str(aln_fa),
+                    "--model", "LG+G",
+                    "--threads", str(current_threads),
+                    "--bs-trees", "100",
+                    "--prefix", prefix
+                ]
+                if seed_bs is not None:
+                    cmd.extend(["--seed", str(seed_bs)])
+                
+                run(cmd, cwd=entry_dir)
+                bs_success = True
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt == 0:
+                    continue
+                else:
+                    raise
+
+        if not bs_success:
+            raise SystemExit("RAxML bootstrap replicates failed after retries")
+
+        bs_end = datetime.now()
+        print(f"    Bootstrap time: {bs_end - bs_start}")
 
         bs_trees = entry_dir / f"{prefix}.raxml.bootstraps"
         if not bs_trees.exists():
@@ -753,6 +814,7 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
         # ---- Step 3: Map bootstrap support onto ML tree ----
         print("  [RAxML] Mapping bootstrap support...")
+        support_start = datetime.now()
         run([
             "raxml-ng",
             "--support",
@@ -760,13 +822,17 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             "--bs-trees", str(bs_trees),
             "--prefix", prefix
         ], cwd=entry_dir)
+        support_end = datetime.now()
+        print(f"    Support mapping time: {support_end - support_start}")
 
         support_tree = entry_dir / f"{prefix}.raxml.support"
         if not support_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce support tree: {support_tree}")
 
-        # Final output: bootstrap-supported tree (like FastTree output)
         shutil.copyfile(support_tree, tree_out)
+        
+        tree_end = datetime.now()
+        print(f"  Total tree build time: {tree_end - tree_start}")
 
 def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Optional[str] = None):
     """
@@ -1275,8 +1341,13 @@ def parse_slice_args(
 def main():
     ap = argparse.ArgumentParser(description="Python rewrite of tblastn-align-tree.sh (single-file, helpers inlined)")
 
+    ap.add_argument("--raxml_seed", type=int, default=None, metavar="N", help="Fixed random seed for RAxML reproducibility (e.g., --raxml-seed 12345). "
+    "ML search uses seed N, bootstrap uses N+1. Default: random seed (non-reproducible)")
+    ap.add_argument("--mafft_mode", choices=["auto", "linsi", "ginsi", "einsi", "fftnsi", "fftnsi-1000", "fftns2", "fftns1", "nwnsi", "nwns2", "parttree"], default="auto",
+    help="MAFFT alignment strategy (default: auto). "
+    "Accuracy-oriented: linsi (L-INS-i), ginsi (G-INS-i), einsi (E-INS-i). "
+    "Speed-oriented: fftnsi, fftnsi-1000, fftns2, fftns1, nwnsi, nwns2, parttree")
     ap.add_argument("--aligner", choices=["clustalo", "mafft"], default="clustalo", help="Multiple sequence aligner to use (default=clustalo)")
-    ap.add_argument("--mafft_mode", choices=["auto", "linsi", "einsi", "fftns2"], default="auto", help="MAFFT alignment strategy (default: auto)")
     ap.add_argument("--tree_builder", choices=["FastTree", "RAxML"], default="FastTree", help="Tree builder to use (default=FastTree)")
     ap.add_argument("--check-env", action="store_true", help="check selected Python, R, and external CLI dependencies, then exit")
     ap.add_argument("--strict-env", action="store_true", help="treat tools found outside the active environment as failures")
@@ -1450,7 +1521,7 @@ def main():
 
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
-    align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode)
+    align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode, args.raxml_seed)
 
     aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
 
