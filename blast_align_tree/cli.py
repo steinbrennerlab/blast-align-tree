@@ -10,6 +10,9 @@ Python rewrite of tblastn-align-tree.sh with all helper scripts inlined as funct
 
 Usage example:
 python blast_align_tree.py   -q ENTRY Q2   -qdbs ENTRYDB.fa Q2DB.fa   -n 50 50   -hdr '>' 'gene='   -dbs Vung469.cds.fa TAIR10cds.fa   -add OUTGROUP1   -add_db OUTGROUP_DB.fa   -aa 10 200
+
+The -aa/--slice flag also accepts per-query ranges in START:END form, one per query
+(use '-' to skip slicing for a given query), e.g. `-aa 705:885 701:1164`.
 """
 from __future__ import annotations
 import argparse
@@ -530,19 +533,16 @@ def extract_and_translate(
     entry: str,
     q: str,
     qdb: str,
-    slice_args: Optional[List[str]],
+    aa_slice: Optional[Tuple[int, int]],
     workdir: Path,
     blast_type: str
 ):
     entry_dir = workdir / entry
     genomes_dir = workdir / "genomes"
-    aa_slice = None
-    if slice_args and len(slice_args) >= 2:
-        # Expecting AA start end
-        aa_slice = [int(slice_args[0]), int(slice_args[1])]
+    aa_slice_list: Optional[List[int]] = list(aa_slice) if aa_slice is not None else None
 
     if blast_type == "tblastn":
-        _extract_translate_tblastn(genomes_dir, entry_dir, q, qdb, aa_slice)
+        _extract_translate_tblastn(genomes_dir, entry_dir, q, qdb, aa_slice_list)
     else:
         _extract_copy_blastp(genomes_dir, entry_dir, q, qdb)
 
@@ -1219,6 +1219,55 @@ def validate_pipeline_args(args: argparse.Namespace, parser: argparse.ArgumentPa
     return [""] * len(args.database)
 
 
+def parse_slice_args(
+    slice_args: List[str],
+    queries: List[str],
+    parser: argparse.ArgumentParser,
+) -> List[Optional[Tuple[int, int]]]:
+    """Resolve -aa/--slice into one (start, end) or None per query.
+
+    Accepted forms:
+      - []                           no slicing for any query
+      - [START, END] (two ints)      single pair applied to every query (legacy)
+      - [START:END, START:END, ...]  one colon-separated pair per query;
+                                     use '-' or ':' to skip slicing for that query
+    """
+    n = len(queries)
+    if not slice_args:
+        return [None] * n
+
+    # Legacy two-int form: apply same range to every query.
+    def _is_int(s: str) -> bool:
+        return s.lstrip("+-").isdigit()
+
+    if len(slice_args) == 2 and all(":" not in s and _is_int(s) for s in slice_args):
+        start, end = int(slice_args[0]), int(slice_args[1])
+        return [(start, end)] * n
+
+    # Per-query form: one token per query, START:END or '-' to skip.
+    if len(slice_args) != n:
+        parser.error(
+            f"-aa/--slice per-query form needs one entry per query "
+            f"({n} queries, got {len(slice_args)}). "
+            f"Use 'START:END' per query or '-' to skip."
+        )
+
+    result: List[Optional[Tuple[int, int]]] = []
+    for i, tok in enumerate(slice_args, start=1):
+        if tok in ("-", ":", ""):
+            result.append(None)
+            continue
+        if ":" not in tok:
+            parser.error(
+                f"-aa/--slice entry #{i} ('{tok}') must be 'START:END' or '-' for no slice"
+            )
+        parts = tok.split(":")
+        if len(parts) != 2 or not parts[0] or not parts[1] or not all(_is_int(p) for p in parts):
+            parser.error(f"-aa/--slice entry #{i} ('{tok}') must be 'START:END' with integers")
+        result.append((int(parts[0]), int(parts[1])))
+    return result
+
+
 # -----------------------
 # Main
 # -----------------------
@@ -1240,7 +1289,15 @@ def main():
     ap.add_argument("-dbs", "--database", nargs="+", help="blast databases to search (filenames or subfolder paths under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
-    ap.add_argument("-aa", "--slice", nargs="*", default=[], help="AA slice start end, optional")
+    ap.add_argument(
+        "-aa", "--slice", nargs="*", default=[],
+        help=(
+            "AA slice. Two forms: (1) '-aa START END' applies the same 0-based "
+            "Python slice to every query; (2) '-aa START:END START:END ...' sets "
+            "one per-query slice (must match the number of queries; use '-' to "
+            "skip slicing for a given query)."
+        ),
+    )
     ap.add_argument("--threads", type=int, default=max(1, os.cpu_count() // 2), help="parallel jobs for BLAST steps")
     ap.add_argument("--workdir", default=".", help="working directory (default=.)")
     ap.add_argument("--datasets", default=None,
@@ -1292,8 +1349,9 @@ def main():
 
     # Step 1: extract and translate each query (optionally AA slice)
     print(f"\n→ Extracting query sequences")
-    for q, qdb in zip(args.queries, args.query_databases):
-        extract_and_translate(entry, q, qdb, args.slice if args.slice else None, workdir, blast_type)
+    slices = parse_slice_args(args.slice, args.queries, ap)
+    for q, qdb, qslice in zip(args.queries, args.query_databases, slices):
+        extract_and_translate(entry, q, qdb, qslice, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
     print(f"  Parallel BLAST Jobs {args.threads}")

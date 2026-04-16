@@ -262,8 +262,9 @@ bat-genome-selector
 - **Options panel.** Aligner (Clustal Omega or MAFFT + mode), tree builder
   (FastTree or RAxML), BLAST type (tblastn/blastp), thread count.
 - **Advanced panel** (collapsible): outgroups (`-add`, `-add_db`), AA
-  slice (`-aa`), motif patterns (regex or PROSITE, overlap toggle), and
-  HMM profiles (`--hmm`).
+  slice (`-aa`, single range applied to all queries, or one range per
+  query — see the tutorial section below), motif patterns (regex or
+  PROSITE, overlap toggle), and HMM profiles (`--hmm`).
 - **Generate Command / Copy to Clipboard.** Produces a ready-to-paste
   `blast-align-tree …` command.
 - **Recent Runs tab.** Lists past `ENTRY/runs/TIMESTAMP/` directories in
@@ -412,6 +413,36 @@ blast-align-tree -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 \
                  -dbs TAIR10cds.fa Vung469cds.fa \
                  -hdr gene: locus=
 ```
+
+### Slicing query amino-acid ranges with `-aa`
+
+`-aa` trims each query to a sub-range (0-based, Python-style:
+`start`-inclusive, `end`-exclusive) before BLAST. Two forms are
+supported:
+
+- **Single range, applied to every query** — two bare integers:
+
+  ```
+  -aa 10 200
+  ```
+
+- **One range per query** — `START:END` tokens, one per entry in `-q`
+  (matching order). Use `-` to skip slicing for a particular query:
+
+  ```
+  blast-align-tree \
+      -q   Phvul.007G077500.1 Phvul.002G196200.1 Phvul.004G100000.1 Phvul.010G073300.1 \
+      -qdbs Pvul218cds.fa     Pvul218cds.fa      Pvul218cds.fa      Pvul218cds.fa \
+      -n   15 15 \
+      -dbs TAIR10cds.fa Vung469cds.fa \
+      -hdr gene: locus= \
+      -aa  705:885 701:1164 903:1104 861:1086
+  ```
+
+  This is handy when you want the same homologous sub-region from each
+  query (for example a kinase domain whose ungapped coordinates differ
+  between sequences). Mix and match skips with `-`, e.g.
+  `-aa 705:885 - - 861:1086`.
 
 ### Adding a new genome
 
