@@ -17,6 +17,8 @@
 !/genomes
 !/genomes/animals
 !/genomes/animals/**
+!/genomes/Nicotiana_benthamiana
+!/genomes/Nicotiana_benthamiana/**
 
 # Don't ignore these specific folders but ignore their contents unless noted
 !/hmm_files

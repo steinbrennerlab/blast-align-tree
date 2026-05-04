@@ -1,0 +1,24 @@
+{
+  "version": "1.2",
+  "dbname": "NbLab360.v103.gff3.CDS.fasta.AA.fasta",
+  "dbtype": "Protein",
+  "db-version": 5,
+  "description": "NbLab360.v103.gff3.CDS.fasta.AA.fasta",
+  "number-of-letters": 18094970,
+  "number-of-sequences": 45730,
+  "last-updated": "2026-05-04T14:52:00",
+  "number-of-volumes": 1,
+  "bytes-total": 31378743,
+  "bytes-to-cache": 18506693,
+  "files": [
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pdb",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.phr",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pin",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pog",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pos",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pot",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.psq",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.ptf",
+    "NbLab360.v103.gff3.CDS.fasta.AA.fasta.pto"
+  ]
+}
