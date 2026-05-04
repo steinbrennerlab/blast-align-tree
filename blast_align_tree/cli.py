@@ -128,6 +128,113 @@ def prepend_header_line(fp: Path, header: str):
     content = fp.read_text(encoding="utf-8", errors="ignore")
     fp.write_text(header + content, encoding="utf-8")
 
+_BLASTDB_EXTS = {
+    "nucl": (".nhr", ".nin", ".nsq", ".ndb", ".njs", ".nog", ".nos", ".not", ".ntf", ".nto"),
+    "prot": (".phr", ".pin", ".psq", ".pdb", ".pjs", ".pog", ".pos", ".pot", ".ptf", ".pto"),
+}
+
+
+def _is_git_lfs_pointer(fp: Path) -> bool:
+    if not fp.is_file():
+        return False
+    try:
+        with fp.open("rb") as f:
+            first = f.read(80)
+    except OSError:
+        return False
+    return first.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+
+def _first_fasta_id(fp: Path) -> Optional[str]:
+    try:
+        with fp.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith(">"):
+                    return line[1:].strip().split()[0]
+    except OSError:
+        return None
+    return None
+
+
+def _blast_dbtype(blast_type: str) -> str:
+    return "nucl" if blast_type == "tblastn" else "prot"
+
+
+def _blastdb_files(db_path: Path, dbtype: str) -> List[Path]:
+    return [Path(str(db_path) + ext) for ext in _BLASTDB_EXTS[dbtype]]
+
+
+def _probe_blastdb_first_entry(db_path: Path, first_id: str) -> Tuple[bool, str]:
+    result = subprocess.run(
+        [
+            "blastdbcmd",
+            "-db", str(db_path),
+            "-entry", first_id,
+            "-outfmt", "%i",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return True, ""
+    detail = _one_line(result.stderr or result.stdout)
+    return False, detail or "blastdbcmd could not retrieve the first FASTA record"
+
+
+def ensure_blast_database(db_path: Path, blast_type: str):
+    """
+    Ensure a FASTA has a usable BLAST database next to it.
+
+    The animal DBs are easy to leave in a half-present state after a Git LFS
+    checkout: the FASTA may be real while .nhr/.nsq are tiny pointer files.
+    BLAST+ can crash on those, so validate before running tblastn/blastp.
+    """
+    if not db_path.is_file():
+        raise SystemExit(f"BLAST database FASTA not found: {db_path}")
+    if _is_git_lfs_pointer(db_path):
+        raise SystemExit(
+            f"{db_path} is a Git LFS pointer, not a FASTA. "
+            "Run `git lfs pull` or re-fetch the genome FASTA before running BLAST."
+        )
+
+    dbtype = _blast_dbtype(blast_type)
+    db_files = _blastdb_files(db_path, dbtype)
+    existing = [fp for fp in db_files if fp.exists()]
+    pointer_files = [fp for fp in existing if _is_git_lfs_pointer(fp)]
+    first_id = _first_fasta_id(db_path)
+    if not first_id:
+        raise SystemExit(f"No FASTA records found in BLAST database source: {db_path}")
+
+    rebuild_reason: Optional[str] = None
+    if pointer_files:
+        names = ", ".join(fp.name for fp in pointer_files[:3])
+        more = " ..." if len(pointer_files) > 3 else ""
+        rebuild_reason = f"index contains Git LFS pointer file(s): {names}{more}"
+    elif not existing:
+        rebuild_reason = "index files are missing"
+    else:
+        ok, detail = _probe_blastdb_first_entry(db_path, first_id)
+        if not ok:
+            rebuild_reason = f"index validation failed: {detail}"
+
+    if rebuild_reason:
+        check_tool("makeblastdb")
+        print(f"  [db] rebuilding {dbtype} BLAST index for {db_path} ({rebuild_reason})")
+        try:
+            run(["makeblastdb", "-in", str(db_path), "-dbtype", dbtype, "-parse_seqids"])
+        except subprocess.CalledProcessError as exc:
+            raise SystemExit(f"makeblastdb failed for {db_path}: exit code {exc.returncode}") from exc
+        ok, detail = _probe_blastdb_first_entry(db_path, first_id)
+        if not ok:
+            raise SystemExit(
+                f"Rebuilt BLAST index for {db_path}, but validation still failed: {detail}"
+            )
+
+
+def ensure_blast_databases(databases: List[str], workdir: Path, blast_type: str):
+    for db in dict.fromkeys(databases):
+        ensure_blast_database(workdir / "genomes" / db, blast_type)
+
 def archive_run(entry_root: Path, timestamp: str) -> Path:
     """
     Move all current contents of ./ENTRY into ./ENTRY/runs/<timestamp>/,
@@ -1423,6 +1530,10 @@ def main():
     slices = parse_slice_args(args.slice, args.queries, ap)
     for q, qdb, qslice in zip(args.queries, args.query_databases, slices):
         extract_and_translate(entry, q, qdb, qslice, workdir, blast_type)
+
+    # Validate/rebuild search indexes before parallel BLAST so corrupt DB files
+    # fail once with a clear message instead of surfacing as worker tracebacks.
+    ensure_blast_databases(args.database, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
     print(f"  Parallel BLAST Jobs {args.threads}")
