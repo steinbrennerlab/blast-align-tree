@@ -27,7 +27,7 @@
       "size_mb": 10.5,
       "default": true,
       "emoji": "🫘",
-      "description": "Phaseolus vulgaris CDS (common bean, v2.1)"
+      "description": "Phaseolus vulgaris CDS (common bean, v1.0)"
     },
     "Vung469cds": {
       "filename": "Vung469cds.fa",

@@ -218,7 +218,7 @@ The default set 🌱🌿🫘🫛🍅🍃📊 is:
 - **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
 - **TAIR10 proteins** — *Arabidopsis thaliana* proteome
 - **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences, Phytozome genome ID 218, v1.0
-- **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences, Phytozome genome ID 469, v2.1
+- **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences, Phytozome genome ID 469, v1.1
 - **NbLab360 CDS** — *Nicotiana benthamiana* coding sequences (LAB360 v103)
 - **NbLab360 proteins** — *Nicotiana benthamiana* proteome (LAB360 v103)
 - 📊 **Klepikova atlas subset** — *Arabidopsis* expression overlay
