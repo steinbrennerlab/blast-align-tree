@@ -1,0 +1,3 @@
+*.fna filter=lfs diff=lfs merge=lfs -text
+*.nhr filter=lfs diff=lfs merge=lfs -text
+*.nsq filter=lfs diff=lfs merge=lfs -text
