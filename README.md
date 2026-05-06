@@ -184,13 +184,13 @@ any other directory won't find your genomes.
 ### Fetching bundled genome databases
 
 A clone ships the **plant** default set already in `./genomes/`
-(🌱🌿🫘🫛🍅) plus 📊 Klepikova in `./datasets/`. **Animal and fungal
+(🌱🌿🫘🫛🍅🍃) plus 📊 Klepikova in `./datasets/`. **Animal and fungal
 genomes are hosted on GitHub Releases instead of being checked in** —
 they're too large to bundle in the clone and exceed PyPI's per-file
 limit, so they're fetched on demand:
 
 ```
-blast-align-tree-fetch                       # default plant set 🌱🌿🫘🫛🍅📊
+blast-align-tree-fetch                       # default plant set 🌱🌿🫘🫛🍅🍃📊
 blast-align-tree-fetch --all                 # everything in the manifest 🌍
 blast-align-tree-fetch --list                # show available genomes + sizes
 blast-align-tree-fetch human_cds mouse_cds   # fetch specific genomes by name
@@ -213,13 +213,14 @@ download `blast-align-tree-fetch` runs `makeblastdb` on the FASTA (the
 nucleotide / protein mode is auto-detected), so the files are ready for
 the pipeline with no extra step. Pass `--no-index` to skip that.
 
-The default set 🌱🌿🫘🫛🍅📊 is:
+The default set 🌱🌿🫘🫛🍅🍃📊 is:
 
 - **TAIR10 CDS** — *Arabidopsis thaliana* coding sequences
 - **TAIR10 proteins** — *Arabidopsis thaliana* proteome
-- **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences
-- **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences
-- **Niben261 proteins** — *Nicotiana benthamiana* proteome (v2.6.1)
+- **Pvul218 CDS** — *Phaseolus vulgaris* (common bean) coding sequences, Phytozome genome ID 218, v1.0
+- **Vung469 CDS** — *Vigna unguiculata* (cowpea) coding sequences, Phytozome genome ID 469, v2.1
+- **NbLab360 CDS** — *Nicotiana benthamiana* coding sequences (LAB360 v103)
+- **NbLab360 proteins** — *Nicotiana benthamiana* proteome (LAB360 v103)
 - 📊 **Klepikova atlas subset** — *Arabidopsis* expression overlay
   dataset (lands in `./datasets/`, not `./genomes/`)
 
@@ -300,7 +301,7 @@ per-genome summaries go under
 
 After the run finishes, the pipeline prints a re-draw hint. For example,
 to reroot on an outgroup (`-a AT5G10290`) and zoom in on a subnode
-(`-n 45`):
+(`-n 45`). (Note that you must replace the path to your R script and timestamp with details from your specific run.)
 
 ```
 Rscript "<bundled-visualize_tree.r>" -e AT4G33430.1 -b SERK_tree \
@@ -396,7 +397,7 @@ benthamiana* proteomes:
 blast-align-tree --blast_type blastp \
                  -q AT1G02450.1 -qdbs TAIR10protein.fa \
                  -n 10 10 \
-                 -dbs TAIR10protein.fa Niben261_genome.annotation.proteins.fasta \
+                 -dbs TAIR10protein.fa NbLab360.v103.gff3.CDS.fasta.AA.fasta \
                  -hdr gene: id
 ```
 
@@ -496,7 +497,7 @@ blast-align-tree --blast_type blastp \
                  -q AT2G31880.1 -qdbs TAIR10protein.fa \
                  -n 10 10 10 \
                  -dbs TAIR10protein.fa \
-                       Niben261_genome.annotation.proteins.fasta \
+                       NbLab360.v103.gff3.CDS.fasta.AA.fasta \
                        Nitab-v4.5_proteins_Edwards2017.fasta \
                  -hdr gene: id id \
 				 --hmm kinase.hmm
@@ -522,7 +523,7 @@ blast-align-tree --blast_type blastp \
                  -q AT2G31880.1 -qdbs TAIR10protein.fa \
                  -n 10 10 10 \
                  -dbs TAIR10protein.fa \
-                       Niben261_genome.annotation.proteins.fasta \
+                       NbLab360.v103.gff3.CDS.fasta.AA.fasta \
                        Nitab-v4.5_proteins_Edwards2017.fasta \
                  -hdr gene: id id
 ```

@@ -38,14 +38,23 @@
       "emoji": "🫛",
       "description": "Vigna unguiculata CDS (cowpea, v1.1)"
     },
-    "Niben261_proteins": {
-      "filename": "Niben261_genome.annotation.proteins.fasta",
-      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/Niben261_genome.annotation.proteins.fasta.gz",
-      "sha256": "a81c393bcc36437944d094f6d507b89f7eea14f665686c5997abc720a859a2ab",
-      "size_mb": 12.6,
+    "NbLab360_cds": {
+      "filename": "NbLab360.v103.gff3.CDS.fasta",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.3/NbLab360.v103.gff3.CDS.fasta.gz",
+      "sha256": "de4ea53d8a2952015ca65467cb1b0d6be327a4247e0709b86cdbb8757f1e1380",
+      "size_mb": 60,
       "default": true,
       "emoji": "🍅",
-      "description": "Nicotiana benthamiana proteins (v2.6.1)"
+      "description": "Nicotiana benthamiana CDS (LAB360 v103)"
+    },
+    "NbLab360_proteins": {
+      "filename": "NbLab360.v103.gff3.CDS.fasta.AA.fasta",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.3/NbLab360.v103.gff3.CDS.fasta.AA.fasta.gz",
+      "sha256": "2531f399c91615edb512652e6149fadff0eea3627ebb3a0a838e30805ba5a8e8",
+      "size_mb": 25,
+      "default": true,
+      "emoji": "🍃",
+      "description": "Nicotiana benthamiana proteins (LAB360 v103)"
     },
     "human_cds": {
       "filename": "animals/human_GRCh38_cds_canonical.fa",
