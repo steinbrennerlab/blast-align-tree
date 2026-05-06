@@ -15,8 +15,6 @@
 !/environments
 !/environments/**
 !/genomes
-!/genomes/animals
-!/genomes/animals/**
 !/genomes/Nicotiana_benthamiana
 !/genomes/Nicotiana_benthamiana/**
 
