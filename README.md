@@ -183,22 +183,23 @@ any other directory won't find your genomes.
 
 ### Fetching bundled genome databases
 
-If you cloned the repo, `./genomes/` and `./datasets/` are already
-populated — **skip this section** unless you want to refresh the hosted
-set or pull additional opt-in genomes with `--all`.
-
-For pip-only installs (or to re-pull a hosted asset cleanly), fetch
-into your project directory:
+A clone ships the **plant** default set already in `./genomes/`
+(🌱🌿🫘🫛🍅) plus 📊 Klepikova in `./datasets/`. **Animal and fungal
+genomes are hosted on GitHub Releases instead of being checked in** —
+they're too large to bundle in the clone and exceed PyPI's per-file
+limit, so they're fetched on demand:
 
 ```
-blast-align-tree-fetch               # default set 🌱 🌿 🫘 🫛 🍅 📊
-blast-align-tree-fetch --all         # everything listed in the manifest 🌍
-blast-align-tree-fetch --list        # show available genomes + sizes
+blast-align-tree-fetch                       # default plant set 🌱🌿🫘🫛🍅📊
+blast-align-tree-fetch --all                 # everything in the manifest 🌍
+blast-align-tree-fetch --list                # show available genomes + sizes
+blast-align-tree-fetch human_cds mouse_cds   # fetch specific genomes by name
 ```
 
-Genome FASTAs are too large to ship inside the pip package, so a small
-set of reference plant and animal genomes is hosted as GitHub release
-assets. `blast-align-tree` ships a **manifest**
+Pip-only installs (no clone) use the same command to pull the plant set
+into the project directory.
+
+`blast-align-tree` ships a **manifest**
 (`blast_align_tree/data/genomes_manifest.json` inside the installed
 package) listing each hosted genome with its URL and sha256 checksum.
 The manifest is read-only from a user's perspective — you don't edit it
