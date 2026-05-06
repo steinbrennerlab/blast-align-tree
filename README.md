@@ -419,7 +419,9 @@ blast-align-tree -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 \
 ### Slicing query amino-acid ranges with `-aa`
 
 `-aa` trims each query to a sub-range (0-based, Python-style:
-`start`-inclusive, `end`-exclusive) before BLAST. Two forms are
+`start`-inclusive, `end`-exclusive) before BLAST. The hits are not trimmed, only the query sequences.
+
+Two forms are
 supported:
 
 - **Single range, applied to every query** — two bare integers:
