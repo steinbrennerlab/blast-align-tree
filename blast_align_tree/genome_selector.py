@@ -315,27 +315,34 @@ class GenomeSelectorApp:
     # Banner
     # ------------------------------------------------------------------
     def _build_banner(self):
+        bat_col = 45
+        rows = [
+            ("        ,-- ATGCATGC  H. sapiens",       ""),
+            ("    ,---+",                              "     _.-~^~-._        /\\  /\\        _.-~^~-._"),
+            ("    |   `-- ATGCGTGC  D. melanogaster",  "   ,'         `-.____/    \\____.-'`         `,"),
+            (" ---+",                                  "  /                 B.A.T.                  \\"),
+            ("    |   ,-- ATGCATCC  A. thaliana",      "  \\__,           _,-~      ~-,_          ,__/"),
+            ("    `---+",                              "      `-.____.-'                `-.____.-'"),
+            ("        `-- ATGCGTCC  O. sativa",        ""),
+        ]
+        body = "\n".join(
+            (tree + " " * max(1, bat_col - len(tree)) + bat) if bat else tree
+            for tree, bat in rows
+        )
         banner = (
             "  B.A.T.  BLAST - ALIGN - TREE\n"
-            "  ---------------------------------------------------------------\n"
-            "      .---------------- ATGCATGC  H. sapiens        /\\       /\\\n"
-            "  .---+----.                                      __/  \\_____/  \\__\n"
-            "  |        `------ ATGCGTGC  D. melanogaster    /  _   B.A.T.  _  \\\n"
-            "  |                                             /__/ \\_________/ \\__\\\n"
-            "  `---.---------- ATGCATCC  A. thaliana            \\___     ___/\n"
-            "      `---------- ATGCGTCC  O. sativa                  \\___/"
+            "  -------------------------------------------------------------------------------------\n"
+            + body
         )
         tk.Label(self.root, text=banner, font=("Courier", 9), justify="left",
                  anchor="w", padx=12, pady=4).pack(fill="x")
 
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
-            f"Scanning genomes/ for FASTA files ({exts})\n"
-            "1. Install the package once: pip install blast-align-tree\n"
-            "   (or, from this repo: pip install -e .)\n"
-            "2. Select hit databases, set -hdr tokens, and fill in query IDs below.\n"
-            "3. Click 'Generate Command', then 'Copy to Clipboard'.\n"
-            "4. Paste and run the command in a terminal with your conda/mamba environment activated."
+            f"Scanning genomes/ and subfolders for FASTA files ({exts})\n"
+            "1. Fill in query IDs, select hit databases to search, and set -hdr tokens to parse descriptions to the parts you want. \n"
+            "2. Click 'Generate Command', then 'Copy to Clipboard'.\n"
+            "3. Paste and run the command in a terminal with your conda/mamba environment activated."
         )
         tk.Label(self.root, text=summary, font=("TkDefaultFont", 9),
                  justify="left", anchor="w", padx=12).pack(fill="x")
