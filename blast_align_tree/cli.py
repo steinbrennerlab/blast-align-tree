@@ -26,6 +26,7 @@ from typing import Iterable, List, Tuple, Optional
 import re
 import tempfile
 from datetime import datetime
+from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
 _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
@@ -47,6 +48,16 @@ except ImportError as exc:
 # -----------------------
 # Utilities
 # -----------------------
+
+@dataclass(frozen=True)
+class DedupStats:
+    input_records: int
+    output_records: int
+
+    @property
+    def condensed_records(self) -> int:
+        return self.input_records - self.output_records
+
 
 def check_tool(name: str):
     if shutil.which(name) is None:
@@ -96,15 +107,17 @@ def merge_files(in_paths: Iterable[Path], out_path: Path):
                 with p.open("r", encoding="utf-8", errors="ignore") as f:
                     shutil.copyfileobj(f, out)
 
-def dedup_fasta_by_id(in_path: Path, out_path: Path):
+def dedup_fasta_by_id(in_path: Path, out_path: Path) -> DedupStats:
     """Deduplicate FASTA entries by the header token up to first whitespace."""
     ensure_dir(out_path.parent)
     seen = set()
+    input_records = 0
     with in_path.open("r", encoding="utf-8", errors="ignore") as fin, \
          out_path.open("w", encoding="utf-8") as fout:
         write = False
         for line in fin:
             if line.startswith(">"):
+                input_records += 1
                 tok = line.strip().split()[0]  # header token
                 if tok not in seen:
                     seen.add(tok)
@@ -115,6 +128,14 @@ def dedup_fasta_by_id(in_path: Path, out_path: Path):
             else:
                 if write:
                     fout.write(line)
+    return DedupStats(input_records=input_records, output_records=len(seen))
+
+def print_hdr_condense_summary(label: str, stats: DedupStats):
+    print(
+        f"  [hdr] {label}: {stats.input_records} parsed record(s) -> "
+        f"{stats.output_records} unique entr{'y' if stats.output_records == 1 else 'ies'} "
+        f"({stats.condensed_records} duplicate label(s) condensed)"
+    )
 
 def count_fasta_records(fp: Path) -> int:
     if not fp.exists():
@@ -1567,6 +1588,7 @@ def main():
 
     # Step 4: merge and dedup FASTAs (conditional on blast_type)
     bt = bt_suffix(blast_type)
+    tree_label_stats: Optional[DedupStats] = None
 
     if blast_type == "tblastn":
         # NT FASTAs (only for tblastn)
@@ -1593,7 +1615,7 @@ def main():
         trans_parse_merged = entry_dir / f"{entry}.seq.{bt}.blastdb.translate.fa.parse.merged.fa"
         merge_files(all_trans_parse, trans_parse_merged)
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
-        dedup_fasta_by_id(trans_parse_merged, parse_merged)
+        tree_label_stats = dedup_fasta_by_id(trans_parse_merged, parse_merged)
 
     else:
         # blastp: AA are directly in *.seq.blastp.blastdb.fa → parse creates *.parse.fa
@@ -1607,7 +1629,10 @@ def main():
         aa_parse_merged = entry_dir / f"{entry}.seq.{bt}.blastdb.fa.parse.merged.fa"
         merge_files(all_aa_parse, aa_parse_merged)
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
-        dedup_fasta_by_id(aa_parse_merged, parse_merged)
+        tree_label_stats = dedup_fasta_by_id(aa_parse_merged, parse_merged)
+
+    if tree_label_stats is not None:
+        print_hdr_condense_summary("final tree labels from -hdr parsing", tree_label_stats)
 
     # Step 5: per-database merges → Orthofinder-ready copies
     orthof = run_assets_dir(entry_dir) / "hits" / "orthofinder-input"
@@ -1617,13 +1642,20 @@ def main():
     else:
         pattern = f"*.{{dbl}}.seq.{bt}.blastdb.fa.parse.fa"
 
+    hdr_rules_by_db = {
+        db: (hdr, sfx)
+        for db, hdr, sfx in zip(args.database, args.header, header_suffixes)
+    }
     for db in args.database:
         dbl = db_label(db)
         db_parts = sorted(entry_dir.glob(pattern.format(dbl=dbl)))
         db_merge = entry_dir / f"{dbl}.parse.merged.fa"
         merge_files(db_parts, db_merge)
         db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
-        dedup_fasta_by_id(db_merge, db_rmdup)
+        db_stats = dedup_fasta_by_id(db_merge, db_rmdup)
+        hdr, sfx = hdr_rules_by_db[db]
+        hdr_desc = f"-hdr {hdr!r}" + (f", -hdr_sfx {sfx!r}" if sfx else "")
+        print_hdr_condense_summary(f"{db} ({hdr_desc})", db_stats)
         shutil.copyfile(db_rmdup, orthof / dbl)
 
     # Step 6: optional add translations
