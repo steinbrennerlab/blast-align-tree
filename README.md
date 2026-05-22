@@ -11,11 +11,9 @@ A common task in bioinformatics is to find similar genes across a set of
 genomes and compare them using phylogenetic methods. As an alternative to
 using online tools for such analyses, researchers may wish to download
 genomes of interest for local BLAST and downstream analyses. Homolog
-curation, tree construction, header parsing, and visualization alongside
-other datasets (e.g. gene expression) can give quick insights into a gene
+curation, header parsing, tree construction, and annotation of motifs, domains, and other datasets (e.g. gene expression) can give insights into a gene
 family of interest.
 
-<!-- TODO: regenerate images/flowchart.png if the pipeline layout has changed -->
 ![](images/flowchart.png)
 
 ## ⚙️ Installation
@@ -97,15 +95,15 @@ plus Python. Install the CLI tools from their vendors (add each to
 
 - [NCBI BLAST+](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/) (`ncbi-blast-*+-x64-win64.exe`)
 - [MAFFT](https://mafft.cbrc.jp/alignment/software/windows_without_cygwin.html) (all-in-one Windows build)
-- [RAxML-NG](https://github.com/amkozlov/raxml-ng/releases) (Windows zip)
 - [Clustal Omega](http://www.clustal.org/omega/) (Windows binary)
 - [FastTree](http://www.microbesonline.org/fasttree/#Install) (`FastTree.exe`)
 - [trimAl](https://github.com/inab/trimal/releases) (Windows build) — or compile from source
-- [HMMER](http://hmmer.org/download.html) — Windows users typically run it under WSL
+- [HMMER](https://github.com/bioermaf/win-hmmer) — use win-hmmer
+
+Unfortunately Windows users cannot use RAxML-NG for tree construction. Use WSL2 instead.
 
 If you'd rather avoid hand-installing these, run the Linux YAML under
-**WSL2** (Ubuntu) and drive the pipeline from there — everything is in
-bioconda on that path.
+**WSL2** (Ubuntu) and run the pipeline from there — everything is installable through conda/mamba environment via bioconda on WSL2.
 
 ### 3. Install the Python package
 
@@ -508,7 +506,6 @@ blast-align-tree --blast_type blastp \
 The run produces a tree PDF with tobacco SOBIR1 homologs slotted in
 alongside the *N. benthamiana* and Arabidopsis sequences.
 
-<!-- TODO: regenerate images/SOBIR1_with_ntab.png from the run above -->
 ![](images/SOBIR1_with_ntab.png)
 
 ### Rebuild the SOBIR1 tree with MAFFT and RAxML
