@@ -87,15 +87,16 @@ to pull `ggtree`, `ggplot2`, `ape`, `phytools`, `tidytree`, `treeio`,
 Rscript environments/install_r_deps.R
 ```
 
-**Windows — external CLI tools are not in the YAML.** Bioconda doesn't
+**Windows — external CLI tools and one R package are not in the YAML.** Bioconda doesn't
 build BLAST+, MAFFT, Clustal Omega, trimAl, FastTree, RAxML-NG, or
-HMMER for Windows, so the Windows YAML only provisions the R stack
-plus Python. Install the CLI tools from their vendors (add each to
+HMMER for Windows, so the Windows YAML only provisions the majority of the R stack
+plus Python. Install the R package 'Biostrings' separately or run the bundled installer. 
+Then install the CLI tools from their vendors (add each to
 `PATH` after install):
 
 - [NCBI BLAST+](https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/) (`ncbi-blast-*+-x64-win64.exe`)
 - [MAFFT](https://mafft.cbrc.jp/alignment/software/windows_without_cygwin.html) (all-in-one Windows build)
-- [Clustal Omega](http://www.clustal.org/omega/) (Windows binary)
+- [Clustal Omega](https://github.com/GSLBiotech/clustal-omega/releases) (Windows build) — or compile from source
 - [FastTree](http://www.microbesonline.org/fasttree/#Install) (`FastTree.exe`)
 - [trimAl](https://github.com/inab/trimal/releases) (Windows build) — or compile from source
 - [HMMER](https://github.com/bioermaf/win-hmmer) — use win-hmmer
