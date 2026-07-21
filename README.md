@@ -34,8 +34,8 @@ cd blast-align-tree
 `blast-align-tree` calls several external CLIs that `pip` can't install:
 
 - **BLAST+** (`makeblastdb`, `blastdbcmd`, `tblastn`, `blastp`, `psiblast`)
-- **MAFFT** (≥ 7) — default aligner
-- **Clustal Omega** (`clustalo`) — alternative aligner
+- **Clustal Omega** (`clustalo`) —  default aligner
+- **MAFFT** (≥ 7) — alternative aligner
 - **trimAl** — alignment cleanup
 - **FastTree** and/or **RAxML-NG** — tree inference
 - **R** with `ggtree`, `ape`, `phytools`, `ggplot2`, `optparse`, `treeio`,
