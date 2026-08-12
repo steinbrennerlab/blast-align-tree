@@ -15,8 +15,8 @@
 !/environments
 !/environments/**
 !/genomes
-!/genomes/animals
-!/genomes/animals/**
+!/genomes/Nicotiana_benthamiana
+!/genomes/Nicotiana_benthamiana/**
 
 # Don't ignore these specific folders but ignore their contents unless noted
 !/hmm_files
@@ -37,6 +37,7 @@
 !/install_r_deps.R
 !/LICENSE
 !/pyproject.toml
+!/RELEASE_NOTES_*.md
 
 # Python package (sources, R script, helper scripts, gene_symbols.txt, manifest)
 !/blast_align_tree

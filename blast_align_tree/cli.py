@@ -10,6 +10,9 @@ Python rewrite of tblastn-align-tree.sh with all helper scripts inlined as funct
 
 Usage example:
 python blast_align_tree.py   -q ENTRY Q2   -qdbs ENTRYDB.fa Q2DB.fa   -n 50 50   -hdr '>' 'gene='   -dbs Vung469.cds.fa TAIR10cds.fa   -add OUTGROUP1   -add_db OUTGROUP_DB.fa   -aa 10 200
+
+The -aa/--slice flag also accepts per-query ranges in START:END form, one per query
+(use '-' to skip slicing for a given query), e.g. `-aa 705:885 701:1164`.
 """
 from __future__ import annotations
 import argparse
@@ -23,6 +26,7 @@ from typing import Iterable, List, Tuple, Optional
 import re
 import tempfile
 from datetime import datetime
+from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
 _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
@@ -44,6 +48,16 @@ except ImportError as exc:
 # -----------------------
 # Utilities
 # -----------------------
+
+@dataclass(frozen=True)
+class DedupStats:
+    input_records: int
+    output_records: int
+
+    @property
+    def condensed_records(self) -> int:
+        return self.input_records - self.output_records
+
 
 def check_tool(name: str):
     if shutil.which(name) is None:
@@ -93,15 +107,17 @@ def merge_files(in_paths: Iterable[Path], out_path: Path):
                 with p.open("r", encoding="utf-8", errors="ignore") as f:
                     shutil.copyfileobj(f, out)
 
-def dedup_fasta_by_id(in_path: Path, out_path: Path):
+def dedup_fasta_by_id(in_path: Path, out_path: Path) -> DedupStats:
     """Deduplicate FASTA entries by the header token up to first whitespace."""
     ensure_dir(out_path.parent)
     seen = set()
+    input_records = 0
     with in_path.open("r", encoding="utf-8", errors="ignore") as fin, \
          out_path.open("w", encoding="utf-8") as fout:
         write = False
         for line in fin:
             if line.startswith(">"):
+                input_records += 1
                 tok = line.strip().split()[0]  # header token
                 if tok not in seen:
                     seen.add(tok)
@@ -112,6 +128,14 @@ def dedup_fasta_by_id(in_path: Path, out_path: Path):
             else:
                 if write:
                     fout.write(line)
+    return DedupStats(input_records=input_records, output_records=len(seen))
+
+def print_hdr_condense_summary(label: str, stats: DedupStats):
+    print(
+        f"  [hdr] {label}: {stats.input_records} parsed record(s) -> "
+        f"{stats.output_records} unique entr{'y' if stats.output_records == 1 else 'ies'} "
+        f"({stats.condensed_records} duplicate label(s) condensed)"
+    )
 
 def count_fasta_records(fp: Path) -> int:
     if not fp.exists():
@@ -124,6 +148,113 @@ def prepend_header_line(fp: Path, header: str):
         return
     content = fp.read_text(encoding="utf-8", errors="ignore")
     fp.write_text(header + content, encoding="utf-8")
+
+_BLASTDB_EXTS = {
+    "nucl": (".nhr", ".nin", ".nsq", ".ndb", ".njs", ".nog", ".nos", ".not", ".ntf", ".nto"),
+    "prot": (".phr", ".pin", ".psq", ".pdb", ".pjs", ".pog", ".pos", ".pot", ".ptf", ".pto"),
+}
+
+
+def _is_git_lfs_pointer(fp: Path) -> bool:
+    if not fp.is_file():
+        return False
+    try:
+        with fp.open("rb") as f:
+            first = f.read(80)
+    except OSError:
+        return False
+    return first.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+
+def _first_fasta_id(fp: Path) -> Optional[str]:
+    try:
+        with fp.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith(">"):
+                    return line[1:].strip().split()[0]
+    except OSError:
+        return None
+    return None
+
+
+def _blast_dbtype(blast_type: str) -> str:
+    return "nucl" if blast_type == "tblastn" else "prot"
+
+
+def _blastdb_files(db_path: Path, dbtype: str) -> List[Path]:
+    return [Path(str(db_path) + ext) for ext in _BLASTDB_EXTS[dbtype]]
+
+
+def _probe_blastdb_first_entry(db_path: Path, first_id: str) -> Tuple[bool, str]:
+    result = subprocess.run(
+        [
+            "blastdbcmd",
+            "-db", str(db_path),
+            "-entry", first_id,
+            "-outfmt", "%i",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return True, ""
+    detail = _one_line(result.stderr or result.stdout)
+    return False, detail or "blastdbcmd could not retrieve the first FASTA record"
+
+
+def ensure_blast_database(db_path: Path, blast_type: str):
+    """
+    Ensure a FASTA has a usable BLAST database next to it.
+
+    The animal DBs are easy to leave in a half-present state after a Git LFS
+    checkout: the FASTA may be real while .nhr/.nsq are tiny pointer files.
+    BLAST+ can crash on those, so validate before running tblastn/blastp.
+    """
+    if not db_path.is_file():
+        raise SystemExit(f"BLAST database FASTA not found: {db_path}")
+    if _is_git_lfs_pointer(db_path):
+        raise SystemExit(
+            f"{db_path} is a Git LFS pointer, not a FASTA. "
+            "Run `git lfs pull` or re-fetch the genome FASTA before running BLAST."
+        )
+
+    dbtype = _blast_dbtype(blast_type)
+    db_files = _blastdb_files(db_path, dbtype)
+    existing = [fp for fp in db_files if fp.exists()]
+    pointer_files = [fp for fp in existing if _is_git_lfs_pointer(fp)]
+    first_id = _first_fasta_id(db_path)
+    if not first_id:
+        raise SystemExit(f"No FASTA records found in BLAST database source: {db_path}")
+
+    rebuild_reason: Optional[str] = None
+    if pointer_files:
+        names = ", ".join(fp.name for fp in pointer_files[:3])
+        more = " ..." if len(pointer_files) > 3 else ""
+        rebuild_reason = f"index contains Git LFS pointer file(s): {names}{more}"
+    elif not existing:
+        rebuild_reason = "index files are missing"
+    else:
+        ok, detail = _probe_blastdb_first_entry(db_path, first_id)
+        if not ok:
+            rebuild_reason = f"index validation failed: {detail}"
+
+    if rebuild_reason:
+        check_tool("makeblastdb")
+        print(f"  [db] rebuilding {dbtype} BLAST index for {db_path} ({rebuild_reason})")
+        try:
+            run(["makeblastdb", "-in", str(db_path), "-dbtype", dbtype, "-parse_seqids"])
+        except subprocess.CalledProcessError as exc:
+            raise SystemExit(f"makeblastdb failed for {db_path}: exit code {exc.returncode}") from exc
+        ok, detail = _probe_blastdb_first_entry(db_path, first_id)
+        if not ok:
+            raise SystemExit(
+                f"Rebuilt BLAST index for {db_path}, but validation still failed: {detail}"
+            )
+
+
+def ensure_blast_databases(databases: List[str], workdir: Path, blast_type: str):
+    for db in dict.fromkeys(databases):
+        ensure_blast_database(workdir / "genomes" / db, blast_type)
 
 def archive_run(entry_root: Path, timestamp: str) -> Path:
     """
@@ -530,19 +661,16 @@ def extract_and_translate(
     entry: str,
     q: str,
     qdb: str,
-    slice_args: Optional[List[str]],
+    aa_slice: Optional[Tuple[int, int]],
     workdir: Path,
     blast_type: str
 ):
     entry_dir = workdir / entry
     genomes_dir = workdir / "genomes"
-    aa_slice = None
-    if slice_args and len(slice_args) >= 2:
-        # Expecting AA start end
-        aa_slice = [int(slice_args[0]), int(slice_args[1])]
+    aa_slice_list: Optional[List[int]] = list(aa_slice) if aa_slice is not None else None
 
     if blast_type == "tblastn":
-        _extract_translate_tblastn(genomes_dir, entry_dir, q, qdb, aa_slice)
+        _extract_translate_tblastn(genomes_dir, entry_dir, q, qdb, aa_slice_list)
     else:
         _extract_copy_blastp(genomes_dir, entry_dir, q, qdb)
 
@@ -621,7 +749,8 @@ def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str
     for db, seq in zip(add_dbs, add_seqs):
         _add_translation_from_db(genomes_dir, entry_dir, db, seq)
 
-def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str):
+def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str, raxml_seed: Optional[int] = None):
+    
     entry_dir = workdir / entry
     in_fa = entry_dir / f"{entry}.parse.merged.fa"
     seq_count = count_fasta_records(in_fa)
@@ -632,15 +761,12 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             "This usually means BLAST returned only one unique hit for the query."
         )
 
-    # Canonical alignment filename (independent of aligner)
     aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
 
     print(f"→ Aligning sequences with {aligner} ...")
     align_start = datetime.now()
 
-
     if aligner == "clustalo":
-        # Clustal Omega writes directly to output file
         run([
             "clustalo",
             "-i", str(in_fa),
@@ -650,24 +776,31 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
     elif aligner == "mafft":
         cmd = ["mafft", "--thread", str(threads)]
-
         if mafft_mode == "auto":
             cmd.append("--auto")
         elif mafft_mode == "linsi":
             cmd += ["--localpair", "--maxiterate", "1000"]
+        elif mafft_mode == "ginsi":
+            cmd += ["--globalpair", "--maxiterate", "1000"]
         elif mafft_mode == "einsi":
-            cmd += ["--genafpair", "--maxiterate", "1000"]
+            cmd += ["--ep", "0", "--genafpair", "--maxiterate", "1000"]
+        elif mafft_mode == "fftnsi":
+            cmd += ["--retree", "2", "--maxiterate", "2"]
+        elif mafft_mode == "fftnsi-1000":
+            cmd += ["--retree", "2", "--maxiterate", "1000"]
         elif mafft_mode == "fftns2":
-            cmd += ["--retree", "2"]
-
+            cmd += ["--retree", "2", "--maxiterate", "0"]
+        elif mafft_mode == "fftns1":
+            cmd += ["--retree", "1", "--maxiterate", "0"]
+        elif mafft_mode == "nwnsi":
+            cmd += ["--retree", "2", "--maxiterate", "2", "--nofft"]
+        elif mafft_mode == "nwns2":
+            cmd += ["--retree", "2", "--maxiterate", "0", "--nofft"]
+        elif mafft_mode == "parttree":
+            cmd += ["--retree", "1", "--maxiterate", "0", "--nofft", "--parttree"]
         cmd.append(str(in_fa))
 
-        result = subprocess.run(
-            cmd,
-            text=True,
-            capture_output=True
-        )
-
+        result = subprocess.run(cmd, text=True, capture_output=True)
         mafft_log = entry_dir / "mafft.log"
         mafft_log.write_text(result.stderr, encoding="utf-8")
 
@@ -677,35 +810,25 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
         strategy = "unknown"
         lines = result.stderr.splitlines()
-
         for i, line in enumerate(lines):
             line = line.strip()
-
-            # Case 1: single-line strategy
             if line.startswith("Strategy") and len(line.split()) > 1:
                 strategy = line
                 break
-
             if line.startswith("Using"):
                 strategy = line
                 break
-
-            # Case 2: "Strategy:" followed by next line
             if line == "Strategy:" and i + 1 < len(lines):
                 strategy = f"Strategy {lines[i + 1].strip()}"
                 break
 
         print(f"  MAFFT strategy: {strategy}")
 
-
-        # Keep only FASTA output
         fasta_lines = [
             line for line in result.stdout.splitlines()
             if line.startswith(">") or re.match(r"^[A-Za-z\-\*]+$", line)
         ]
-
         aln_fa.write_text("\n".join(fasta_lines) + "\n", encoding="utf-8")
-
 
     align_end = datetime.now()
     print(f"  Alignment time: {align_end - align_start}")
@@ -715,37 +838,103 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
     if tree_builder == "FastTree":
         run(["FastTree", "-out", str(tree_out), str(aln_fa)])
+        tree_end = datetime.now()
+        print(f"  Tree build time: {tree_end - tree_start}")
 
     elif tree_builder == "RAxML":
         prefix = f"{entry}.raxmlng"
         prefix_path = entry_dir / prefix
 
-        # ---- Step 1: ML tree search ----
+        # Determine seeds for reproducibility
+        if raxml_seed is not None:
+            seed_ml = raxml_seed
+            seed_bs = raxml_seed + 1  # Different seed for bootstrap
+            print(f"  [RAxML] Using fixed seeds for reproducibility: ML={seed_ml}, Bootstrap={seed_bs}")
+        else:
+            seed_ml = None
+            seed_bs = None
+
+        # ---- Step 1: ML tree search with retry fallback ----
         print("  [RAxML] Running ML tree search...")
-        run([
-            "raxml-ng",
-            "--msa", str(aln_fa),
-            "--model", "LG+G",
-            "--threads", str(threads),
-            "--blopt", "nr_safe",
-            "--prefix", prefix
-        ], cwd=entry_dir)
+        ml_start = datetime.now()
+        ml_success = False
+        for attempt in range(2):
+            current_threads = max(1, threads - attempt)
+            if attempt > 0:
+                print(f"    ⚠ Retrying with {current_threads} thread(s)...")
+                for pattern in [f"{prefix}.raxml.log", f"{prefix}.raxml.startTree"]:
+                    for fp in entry_dir.glob(pattern):
+                        fp.unlink(missing_ok=True)
+            
+            try:
+                cmd = [
+                    "raxml-ng",
+                    "--msa", str(aln_fa),
+                    "--model", "LG+G",
+                    "--threads", str(current_threads),
+                    "--prefix", prefix
+                ]
+                if seed_ml is not None:
+                    cmd.extend(["--seed", str(seed_ml)])
+                
+                run(cmd, cwd=entry_dir)
+                ml_success = True
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt == 0:
+                    continue
+                else:
+                    raise
+
+        if not ml_success:
+            raise SystemExit("RAxML ML tree search failed after retries")
+
+        ml_end = datetime.now()
+        print(f"    ML search time: {ml_end - ml_start}")
 
         best_tree = entry_dir / f"{prefix}.raxml.bestTree"
         if not best_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce a bestTree: {best_tree}")
 
-        # ---- Step 2: Bootstrap replicates ----
+        # ---- Step 2: Bootstrap replicates (also with retry) ----
         print("  [RAxML] Running bootstrap replicates...")
-        run([
-            "raxml-ng",
-            "--bootstrap",
-            "--msa", str(aln_fa),
-            "--model", "LG+G",
-            "--threads", str(threads),
-            "--bs-trees", "100",   # <-- adjust as desired
-            "--prefix", prefix
-        ], cwd=entry_dir)
+        bs_start = datetime.now()
+        bs_success = False
+        for attempt in range(2):
+            current_threads = max(1, threads - attempt)
+            if attempt > 0:
+                print(f"    ⚠ Retrying bootstrap with {current_threads} thread(s)...")
+                for pattern in [f"{prefix}.raxml.log"]:
+                    for fp in entry_dir.glob(pattern):
+                        fp.unlink(missing_ok=True)
+            
+            try:
+                cmd = [
+                    "raxml-ng",
+                    "--bootstrap",
+                    "--msa", str(aln_fa),
+                    "--model", "LG+G",
+                    "--threads", str(current_threads),
+                    "--bs-trees", "100",
+                    "--prefix", prefix
+                ]
+                if seed_bs is not None:
+                    cmd.extend(["--seed", str(seed_bs)])
+                
+                run(cmd, cwd=entry_dir)
+                bs_success = True
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt == 0:
+                    continue
+                else:
+                    raise
+
+        if not bs_success:
+            raise SystemExit("RAxML bootstrap replicates failed after retries")
+
+        bs_end = datetime.now()
+        print(f"    Bootstrap time: {bs_end - bs_start}")
 
         bs_trees = entry_dir / f"{prefix}.raxml.bootstraps"
         if not bs_trees.exists():
@@ -753,6 +942,7 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
 
         # ---- Step 3: Map bootstrap support onto ML tree ----
         print("  [RAxML] Mapping bootstrap support...")
+        support_start = datetime.now()
         run([
             "raxml-ng",
             "--support",
@@ -760,13 +950,17 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             "--bs-trees", str(bs_trees),
             "--prefix", prefix
         ], cwd=entry_dir)
+        support_end = datetime.now()
+        print(f"    Support mapping time: {support_end - support_start}")
 
         support_tree = entry_dir / f"{prefix}.raxml.support"
         if not support_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce support tree: {support_tree}")
 
-        # Final output: bootstrap-supported tree (like FastTree output)
         shutil.copyfile(support_tree, tree_out)
+        
+        tree_end = datetime.now()
+        print(f"  Total tree build time: {tree_end - tree_start}")
 
 def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Optional[str] = None):
     """
@@ -1219,6 +1413,55 @@ def validate_pipeline_args(args: argparse.Namespace, parser: argparse.ArgumentPa
     return [""] * len(args.database)
 
 
+def parse_slice_args(
+    slice_args: List[str],
+    queries: List[str],
+    parser: argparse.ArgumentParser,
+) -> List[Optional[Tuple[int, int]]]:
+    """Resolve -aa/--slice into one (start, end) or None per query.
+
+    Accepted forms:
+      - []                           no slicing for any query
+      - [START, END] (two ints)      single pair applied to every query (legacy)
+      - [START:END, START:END, ...]  one colon-separated pair per query;
+                                     use '-' or ':' to skip slicing for that query
+    """
+    n = len(queries)
+    if not slice_args:
+        return [None] * n
+
+    # Legacy two-int form: apply same range to every query.
+    def _is_int(s: str) -> bool:
+        return s.lstrip("+-").isdigit()
+
+    if len(slice_args) == 2 and all(":" not in s and _is_int(s) for s in slice_args):
+        start, end = int(slice_args[0]), int(slice_args[1])
+        return [(start, end)] * n
+
+    # Per-query form: one token per query, START:END or '-' to skip.
+    if len(slice_args) != n:
+        parser.error(
+            f"-aa/--slice per-query form needs one entry per query "
+            f"({n} queries, got {len(slice_args)}). "
+            f"Use 'START:END' per query or '-' to skip."
+        )
+
+    result: List[Optional[Tuple[int, int]]] = []
+    for i, tok in enumerate(slice_args, start=1):
+        if tok in ("-", ":", ""):
+            result.append(None)
+            continue
+        if ":" not in tok:
+            parser.error(
+                f"-aa/--slice entry #{i} ('{tok}') must be 'START:END' or '-' for no slice"
+            )
+        parts = tok.split(":")
+        if len(parts) != 2 or not parts[0] or not parts[1] or not all(_is_int(p) for p in parts):
+            parser.error(f"-aa/--slice entry #{i} ('{tok}') must be 'START:END' with integers")
+        result.append((int(parts[0]), int(parts[1])))
+    return result
+
+
 # -----------------------
 # Main
 # -----------------------
@@ -1226,8 +1469,13 @@ def validate_pipeline_args(args: argparse.Namespace, parser: argparse.ArgumentPa
 def main():
     ap = argparse.ArgumentParser(description="Python rewrite of tblastn-align-tree.sh (single-file, helpers inlined)")
 
+    ap.add_argument("--raxml_seed", type=int, default=None, metavar="N", help="Fixed random seed for RAxML reproducibility (e.g., --raxml-seed 12345). "
+    "ML search uses seed N, bootstrap uses N+1. Default: random seed (non-reproducible)")
+    ap.add_argument("--mafft_mode", choices=["auto", "linsi", "ginsi", "einsi", "fftnsi", "fftnsi-1000", "fftns2", "fftns1", "nwnsi", "nwns2", "parttree"], default="auto",
+    help="MAFFT alignment strategy (default: auto). "
+    "Accuracy-oriented: linsi (L-INS-i), ginsi (G-INS-i), einsi (E-INS-i). "
+    "Speed-oriented: fftnsi, fftnsi-1000, fftns2, fftns1, nwnsi, nwns2, parttree")
     ap.add_argument("--aligner", choices=["clustalo", "mafft"], default="clustalo", help="Multiple sequence aligner to use (default=clustalo)")
-    ap.add_argument("--mafft_mode", choices=["auto", "linsi", "einsi", "fftns2"], default="auto", help="MAFFT alignment strategy (default: auto)")
     ap.add_argument("--tree_builder", choices=["FastTree", "RAxML"], default="FastTree", help="Tree builder to use (default=FastTree)")
     ap.add_argument("--check-env", action="store_true", help="check selected Python, R, and external CLI dependencies, then exit")
     ap.add_argument("--strict-env", action="store_true", help="treat tools found outside the active environment as failures")
@@ -1240,7 +1488,15 @@ def main():
     ap.add_argument("-dbs", "--database", nargs="+", help="blast databases to search (filenames or subfolder paths under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
-    ap.add_argument("-aa", "--slice", nargs="*", default=[], help="AA slice start end, optional")
+    ap.add_argument(
+        "-aa", "--slice", nargs="*", default=[],
+        help=(
+            "AA slice. Two forms: (1) '-aa START END' applies the same 0-based "
+            "Python slice to every query; (2) '-aa START:END START:END ...' sets "
+            "one per-query slice (must match the number of queries; use '-' to "
+            "skip slicing for a given query)."
+        ),
+    )
     ap.add_argument("--threads", type=int, default=max(1, os.cpu_count() // 2), help="parallel jobs for BLAST steps")
     ap.add_argument("--workdir", default=".", help="working directory (default=.)")
     ap.add_argument("--datasets", default=None,
@@ -1292,8 +1548,13 @@ def main():
 
     # Step 1: extract and translate each query (optionally AA slice)
     print(f"\n→ Extracting query sequences")
-    for q, qdb in zip(args.queries, args.query_databases):
-        extract_and_translate(entry, q, qdb, args.slice if args.slice else None, workdir, blast_type)
+    slices = parse_slice_args(args.slice, args.queries, ap)
+    for q, qdb, qslice in zip(args.queries, args.query_databases, slices):
+        extract_and_translate(entry, q, qdb, qslice, workdir, blast_type)
+
+    # Validate/rebuild search indexes before parallel BLAST so corrupt DB files
+    # fail once with a clear message instead of surfacing as worker tracebacks.
+    ensure_blast_databases(args.database, workdir, blast_type)
 
     # Step 2: parallel BLAST per (query, db)
     print(f"  Parallel BLAST Jobs {args.threads}")
@@ -1327,6 +1588,7 @@ def main():
 
     # Step 4: merge and dedup FASTAs (conditional on blast_type)
     bt = bt_suffix(blast_type)
+    tree_label_stats: Optional[DedupStats] = None
 
     if blast_type == "tblastn":
         # NT FASTAs (only for tblastn)
@@ -1353,7 +1615,7 @@ def main():
         trans_parse_merged = entry_dir / f"{entry}.seq.{bt}.blastdb.translate.fa.parse.merged.fa"
         merge_files(all_trans_parse, trans_parse_merged)
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
-        dedup_fasta_by_id(trans_parse_merged, parse_merged)
+        tree_label_stats = dedup_fasta_by_id(trans_parse_merged, parse_merged)
 
     else:
         # blastp: AA are directly in *.seq.blastp.blastdb.fa → parse creates *.parse.fa
@@ -1367,7 +1629,10 @@ def main():
         aa_parse_merged = entry_dir / f"{entry}.seq.{bt}.blastdb.fa.parse.merged.fa"
         merge_files(all_aa_parse, aa_parse_merged)
         parse_merged = entry_dir / f"{entry}.parse.merged.fa"
-        dedup_fasta_by_id(aa_parse_merged, parse_merged)
+        tree_label_stats = dedup_fasta_by_id(aa_parse_merged, parse_merged)
+
+    if tree_label_stats is not None:
+        print_hdr_condense_summary("final tree labels from -hdr parsing", tree_label_stats)
 
     # Step 5: per-database merges → Orthofinder-ready copies
     orthof = run_assets_dir(entry_dir) / "hits" / "orthofinder-input"
@@ -1377,13 +1642,20 @@ def main():
     else:
         pattern = f"*.{{dbl}}.seq.{bt}.blastdb.fa.parse.fa"
 
+    hdr_rules_by_db = {
+        db: (hdr, sfx)
+        for db, hdr, sfx in zip(args.database, args.header, header_suffixes)
+    }
     for db in args.database:
         dbl = db_label(db)
         db_parts = sorted(entry_dir.glob(pattern.format(dbl=dbl)))
         db_merge = entry_dir / f"{dbl}.parse.merged.fa"
         merge_files(db_parts, db_merge)
         db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
-        dedup_fasta_by_id(db_merge, db_rmdup)
+        db_stats = dedup_fasta_by_id(db_merge, db_rmdup)
+        hdr, sfx = hdr_rules_by_db[db]
+        hdr_desc = f"-hdr {hdr!r}" + (f", -hdr_sfx {sfx!r}" if sfx else "")
+        print_hdr_condense_summary(f"{db} ({hdr_desc})", db_stats)
         shutil.copyfile(db_rmdup, orthof / dbl)
 
     # Step 6: optional add translations
@@ -1392,7 +1664,7 @@ def main():
 
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
-    align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode)
+    align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode, args.raxml_seed)
 
     aln_fa = entry_dir / f"{entry}.parse.merged.aligned.fa"
 

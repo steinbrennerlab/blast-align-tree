@@ -4,117 +4,136 @@
   "genomes": {
     "TAIR10cds": {
       "filename": "TAIR10cds.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/TAIR10cds.fa.gz",
+      "sha256": "173349e20fb4ec10630d0e252eeb1c4294f7ebdb0380ccc846e3759cab21ca1d",
+      "size_mb": 13.8,
       "default": true,
       "emoji": "🌱",
       "description": "Arabidopsis thaliana CDS (TAIR10)"
     },
     "TAIR10protein": {
       "filename": "TAIR10protein.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/TAIR10protein.fa.gz",
+      "sha256": "fb87faded2ff3fbbc8f4db813078292c899b74f584ab164eea1960da833127fd",
+      "size_mb": 9.4,
       "default": true,
       "emoji": "🌿",
       "description": "Arabidopsis thaliana proteins (TAIR10)"
     },
     "Pvul218cds": {
       "filename": "Pvul218cds.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/Pvul218cds.fa.gz",
+      "sha256": "368bd5fcb92d414ba1dd3aa1b93445aeb9a9f32074a3c22138b9c1dd022de05a",
+      "size_mb": 10.5,
       "default": true,
       "emoji": "🫘",
-      "description": "Phaseolus vulgaris CDS (common bean, v2.1)"
+      "description": "Phaseolus vulgaris CDS (common bean, v1.0)"
     },
     "Vung469cds": {
       "filename": "Vung469cds.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
-      "default": false,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/Vung469cds.fa.gz",
+      "sha256": "e60690efbdeac8792613c7073db86fb120ff773004c013dca8c5b7e289e94625",
+      "size_mb": 11.2,
+      "default": true,
       "emoji": "🫛",
       "description": "Vigna unguiculata CDS (cowpea, v1.1)"
     },
-    "Niben261_proteins": {
-      "filename": "Niben261_genome.annotation.proteins.fasta",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+    "NbLab360_cds": {
+      "filename": "NbLab360.v103.gff3.CDS.fasta",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.3/NbLab360.v103.gff3.CDS.fasta.gz",
+      "sha256": "de4ea53d8a2952015ca65467cb1b0d6be327a4247e0709b86cdbb8757f1e1380",
+      "size_mb": 60,
       "default": true,
       "emoji": "🍅",
-      "description": "Nicotiana benthamiana proteins (v2.6.1)"
+      "description": "Nicotiana benthamiana CDS (LAB360 v103)"
+    },
+    "NbLab360_proteins": {
+      "filename": "NbLab360.v103.gff3.CDS.fasta.AA.fasta",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.3/NbLab360.v103.gff3.CDS.fasta.AA.fasta.gz",
+      "sha256": "2531f399c91615edb512652e6149fadff0eea3627ebb3a0a838e30805ba5a8e8",
+      "size_mb": 25,
+      "default": true,
+      "emoji": "🍃",
+      "description": "Nicotiana benthamiana proteins (LAB360 v103)"
     },
     "human_cds": {
-      "filename": "animals/human_cds_canonical.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "filename": "animals/human_GRCh38_cds_canonical.fa",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.2/human_GRCh38_cds_canonical.fa.gz",
+      "sha256": "334d008c43245674402f77a9c227e8903a5e5575dfeeb5a59085c57e9d7c8ded",
+      "size_mb": 39,
       "default": false,
       "emoji": "🧑",
-      "description": "Homo sapiens canonical CDS"
+      "description": "Homo sapiens canonical CDS (GRCh38)"
     },
     "mouse_cds": {
-      "filename": "animals/mouse_cds_canonical.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "filename": "animals/mouse_GRCm39_cds_canonical.fa",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.2/mouse_GRCm39_cds_canonical.fa.gz",
+      "sha256": "e7c7fb7772fa24877ec7b6a9cd3258effa4621a6fcde31a935f48f9da0be771f",
+      "size_mb": 41,
       "default": false,
       "emoji": "🐭",
-      "description": "Mus musculus canonical CDS"
+      "description": "Mus musculus canonical CDS (GRCm39)"
     },
     "rat_cds": {
-      "filename": "animals/rat_cds_canonical.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "filename": "animals/rat_mRatBN7.2_cds_canonical.fa",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.2/rat_mRatBN7.2_cds_canonical.fa.gz",
+      "sha256": "5932d7b457853c3265795c8182685c3e32955cd8e2186135be7baeb7cb030668",
+      "size_mb": 42,
       "default": false,
       "emoji": "🐀",
-      "description": "Rattus norvegicus canonical CDS"
+      "description": "Rattus norvegicus canonical CDS (mRatBN7.2)"
     },
     "chimp_cds": {
-      "filename": "animals/chimp_cds_canonical.fa",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "filename": "animals/chimp_NHGRI_mPanTro3-v1.1_cds_canonical.fa",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.2/chimp_NHGRI_mPanTro3-v1.1_cds_canonical.fa.gz",
+      "sha256": "64acf50934914cb8a9e5eacfea3447f2ae50e202622c43e9a32031731d38f9af",
+      "size_mb": 37,
       "default": false,
       "emoji": "🐒",
-      "description": "Pan troglodytes canonical CDS"
+      "description": "Pan troglodytes canonical CDS (NHGRI mPanTro3-v1.1)"
     },
     "zebrafish_cds": {
       "filename": "animals/D_rerio__GRCz12tu_cds.fna",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/D_rerio__GRCz12tu_cds.fna.gz",
+      "sha256": "08631b66d62349226a1ad98e7dace17cb95e67cf50e902e5de92fde8574fd542",
+      "size_mb": 27.1,
       "default": false,
       "emoji": "🐟",
       "description": "Danio rerio CDS (GRCz12tu)"
     },
     "fly_cds": {
       "filename": "animals/D_melanogaster_R6+_ISO1_MT_cds.fna",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/D_melanogaster_R6+_ISO1_MT_cds.fna.gz",
+      "sha256": "f93b9a0058a8a02b03a465340d1588ed1bae1118ec7cccf700872f8563cfb560",
+      "size_mb": 10.2,
       "default": false,
       "emoji": "🪰",
       "description": "Drosophila melanogaster CDS (R6+ ISO1 MT)"
     },
     "worm_cds": {
       "filename": "animals/C_elegans_WBcel235_cds.fna",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/C_elegans_WBcel235_cds.fna.gz",
+      "sha256": "af6423b5152d802674414c367a6d2d16e44da6d93a96f23fde436476eb9ce561",
+      "size_mb": 11.1,
       "default": false,
       "emoji": "🪱",
       "description": "Caenorhabditis elegans CDS (WBcel235)"
     },
+    "klepikova_atlas": {
+      "filename": "klepikova_atlas_subset.tsv",
+      "dest_dir": "datasets",
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/klepikova_atlas_subset.tsv",
+      "sha256": "fe59912600fbaefb83854c6c1ca944ab48a66c5d029b618ca86524ba9c24128b",
+      "size_mb": 1.2,
+      "default": true,
+      "emoji": "📊",
+      "description": "Klepikova Arabidopsis expression atlas subset (overlay dataset)"
+    },
     "yeast_orfs": {
       "filename": "animals/S288C_ref_ORF.fasta",
-      "url": null,
-      "sha256": null,
-      "size_mb": null,
+      "url": "https://github.com/steinbrennerlab/blast-align-tree/releases/download/v1.0.0/S288C_ref_ORF.fasta.gz",
+      "sha256": "397ec777b69ded96ddb08e9a03cfa50332fba993c586c5db7f3a7a76e78b0d73",
+      "size_mb": 3.6,
       "default": false,
       "emoji": "🍞",
       "description": "Saccharomyces cerevisiae S288C reference ORFs"

@@ -1,4 +1,4 @@
-name: bat-cli-python
+name: bat
 channels:
   - conda-forge
   - bioconda

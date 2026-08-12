@@ -828,6 +828,73 @@ if (!is.null(heatmap_file) && ncol(heatmap_file) > 0) {
 
 p_msa<-msaplot(p2,msa,offset=opt$heatmap_offset,color=msa_colors,bg_line=FALSE,) + guides(fill = "none")
 
+msa_grid_bounds <- function(plot_obj) {
+  pb <- ggplot2::ggplot_build(plot_obj)
+
+  normalize_rects <- function(d) {
+    if (!("PANEL" %in% names(d))) d$PANEL <- 1L
+    if (all(c("xmin","xmax","ymin","ymax") %in% names(d))) {
+      d[, c("xmin","xmax","ymin","ymax","PANEL"), drop = FALSE]
+    } else if (all(c("x","y","width","height") %in% names(d))) {
+      data.frame(
+        xmin  = d$x - d$width/2,
+        xmax  = d$x + d$width/2,
+        ymin  = d$y - d$height/2,
+        ymax  = d$y + d$height/2,
+        PANEL = d$PANEL
+      )
+    } else if (all(c("x","y") %in% names(d))) {
+      ux <- sort(unique(d$x)); uy <- sort(unique(d$y))
+      wx <- if (length(ux) > 1) min(diff(ux)) else 1
+      hy <- if (length(uy) > 1) min(diff(uy)) else 1
+      data.frame(
+        xmin  = d$x - wx/2,
+        xmax  = d$x + wx/2,
+        ymin  = d$y - hy/2,
+        ymax  = d$y + hy/2,
+        PANEL = d$PANEL
+      )
+    } else NULL
+  }
+
+  rect_list <- Filter(Negate(is.null), lapply(pb$data, normalize_rects))
+  if (length(rect_list) == 0L) return(NULL)
+
+  msa_rect <- rect_list[[ which.max(vapply(rect_list, nrow, integer(1))) ]]
+  col_center <- (msa_rect$xmin + msa_rect$xmax) / 2
+  u_centers  <- sort(unique(round(col_center, 6)))
+  col_id     <- match(round(col_center, 6), u_centers)
+
+  xleft_by_col  <- tapply(msa_rect$xmin, col_id, min, na.rm = TRUE)
+  xright_by_col <- tapply(msa_rect$xmax, col_id, max, na.rm = TRUE)
+
+  col_edges <- data.frame(
+    aa_col = seq_along(u_centers),
+    xleft  = as.numeric(xleft_by_col),
+    xright = as.numeric(xright_by_col)
+  )
+
+  list(
+    rect = msa_rect,
+    col_edges = col_edges,
+    left = min(col_edges$xleft),
+    width = max(col_edges$xright) - min(col_edges$xleft)
+  )
+}
+
+msa_bounds <- msa_grid_bounds(p_msa)
+msa_legend_y <- max(p_msa$data$y, na.rm = TRUE) + 1.0
+if (!is.null(msa_bounds) && is.finite(msa_bounds$left) && is.finite(msa_bounds$width)) {
+  p_msa <- p_msa +
+    annotate("point",
+      x = msa_bounds$left, y = msa_legend_y,
+      fill = "black", color = "black",
+      shape = 22, size = 2.5, stroke = 0.3) +
+    annotate("text",
+      x = msa_bounds$left + msa_bounds$width * 0.03, y = msa_legend_y,
+      label = "black = aligned protein region", hjust = 0, size = 2.4)
+}
+
 if (has_features) {
 
 # --- Add feature rectangles over the existing MSA (drop-in; UNALIGNED -> ALIGNED) ----
@@ -921,49 +988,9 @@ message(sprintf("[features] wrote aligned coordinates → %s", aligned_out))
 # ------------------------------------------------------------------------------
 
 # 3) Extract the per-column x-bounds from p_msa's drawn grid
-pb <- ggplot2::ggplot_build(p_msa)
-
-normalize_rects <- function(d) {
-  if (!("PANEL" %in% names(d))) d$PANEL <- 1L
-  if (all(c("xmin","xmax","ymin","ymax") %in% names(d))) {
-    d[, c("xmin","xmax","ymin","ymax","PANEL"), drop = FALSE]
-  } else if (all(c("x","y","width","height") %in% names(d))) {
-    data.frame(
-      xmin  = d$x - d$width/2,
-      xmax  = d$x + d$width/2,
-      ymin  = d$y - d$height/2,
-      ymax  = d$y + d$height/2,
-      PANEL = d$PANEL
-    )
-  } else if (all(c("x","y") %in% names(d))) {
-    ux <- sort(unique(d$x)); uy <- sort(unique(d$y))
-    wx <- if (length(ux) > 1) min(diff(ux)) else 1
-    hy <- if (length(uy) > 1) min(diff(uy)) else 1
-    data.frame(
-      xmin  = d$x - wx/2,
-      xmax  = d$x + wx/2,
-      ymin  = d$y - hy/2,
-      ymax  = d$y + hy/2,
-      PANEL = d$PANEL
-    )
-  } else NULL
-}
-rect_list <- Filter(Negate(is.null), lapply(pb$data, normalize_rects))
-stopifnot(length(rect_list) > 0)
-msa_rect <- rect_list[[ which.max(vapply(rect_list, nrow, integer(1))) ]]
-
-col_center <- (msa_rect$xmin + msa_rect$xmax) / 2
-u_centers  <- sort(unique(round(col_center, 6)))
-col_id     <- match(round(col_center, 6), u_centers)  # 1..N columns
-
-xleft_by_col  <- tapply(msa_rect$xmin, col_id, min, na.rm = TRUE)
-xright_by_col <- tapply(msa_rect$xmax, col_id, max, na.rm = TRUE)
-
-col_edges <- data.frame(
-  aa_col = seq_along(u_centers),
-  xleft  = as.numeric(xleft_by_col),
-  xright = as.numeric(xright_by_col)
-)
+stopifnot(!is.null(msa_bounds))
+msa_rect <- msa_bounds$rect
+col_edges <- msa_bounds$col_edges
 
 # 4) Map tip labels to y positions from p_msa
 tip_df <- p_msa$data
@@ -1023,9 +1050,9 @@ for (i in seq_len(nrow(short_pos))) {
       shape = 21, size = 2.2, stroke = 0.3, color = "black")
 }
 # ---- Manual legend for feature overlays (annotate has no legend) ----
-msa_left <- min(col_edges$xleft)
-msa_w    <- max(col_edges$xright) - msa_left
-legend_y_base <- max(p_msa$data$y, na.rm = TRUE) + 1.8
+msa_left <- msa_bounds$left
+msa_w    <- msa_bounds$width
+legend_y_base <- msa_legend_y + 1.0
 
 for (fi in seq_along(levs)) {
   ly <- legend_y_base + (length(levs) - fi) * 1.0
@@ -1039,9 +1066,6 @@ for (fi in seq_along(levs)) {
       label = levs[fi], hjust = 0, size = 2.5)
 }
 
-p_msa <- p_msa +
-  coord_cartesian(clip = "off") +
-  theme(plot.margin = margin(t = 25, r = 5, b = 5, l = 5))
 # -------------------------------------------------------------------------------------
 
 } # end inner else (nrow(feat) > 0)
@@ -1049,6 +1073,11 @@ p_msa <- p_msa +
 } else {
   # Do nothing. Keep the rest of the script unchanged.
 }
+
+msa_top_margin <- if (has_features) 30 else 20
+p_msa <- p_msa +
+  coord_cartesian(clip = "off") +
+  theme(plot.margin = margin(t = msa_top_margin, r = 5, b = 5, l = 5))
 
 msa_pdf_height <- if (has_features) opt$height + 0.5 else opt$height
 message(sprintf("[R] Writing MSA PDF: %s.MSA.pdf", file))
