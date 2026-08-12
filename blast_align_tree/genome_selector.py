@@ -7,6 +7,7 @@ first FASTA record, and generates copy-paste-ready -dbs / -hdr / -n arguments.
 """
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -14,12 +15,34 @@ import random
 import re
 import subprocess
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from pathlib import Path
 
 
 PROJ_DIR = Path.cwd()
 GENOMES_DIR = PROJ_DIR / "genomes"
+SETTINGS_FILE = PROJ_DIR / ".bat_selector_settings.json"
+SETTINGS_VERSION = 1
+
+# Saved-settings key -> attribute holding the tk variable. Per-row state is
+# handled separately, keyed by each genome's path relative to genomes/.
+GLOBAL_SETTING_VARS = {
+    "default_n": "default_n_var",
+    "aligner": "aligner_var",
+    "mafft_mode": "mafft_mode_var",
+    "tree_builder": "tree_var",
+    "blast_type": "blast_type_var",
+    "threads": "threads_var",
+    "add_seqs": "add_seqs_var",
+    "add_dbs": "add_dbs_var",
+    "aa_start": "aa_start_var",
+    "aa_end": "aa_end_var",
+    "motif": "motif_var",
+    "motif_syntax": "motif_syntax_var",
+    "motif_overlap": "motif_overlap_var",
+    "hmm": "hmm_var",
+    "prepend": "prepend_var",
+}
 FASTA_EXTENSIONS = {".fa", ".faa", ".fas", ".fasta", ".fna"}
 # BLAST index extensions to exclude
 BLAST_INDEX_EXTS = {".ndb", ".nhr", ".nin", ".njs", ".nog", ".nos", ".not",
@@ -284,12 +307,20 @@ class ToolTip:
 
 
 class GenomeSelectorApp:
-    def __init__(self, root: tk.Tk, default_n: int = DEFAULT_N):
+    def __init__(self, root: tk.Tk, default_n: int | None = None,
+                 selected_genomes: list[str] | None = None,
+                 restore: bool = True):
         self.root = root
         root.title("BAT Genome Selector")
         root.minsize(1050, 600)
 
-        self.default_n = default_n
+        self.default_n = DEFAULT_N if default_n is None else default_n
+        self._default_n_from_cli = default_n is not None
+        self.selected_genomes = {
+            name.replace("\\", "/").casefold()
+            for name in (selected_genomes or [])
+        }
+        self.row_tokens: dict[str, list[str]] = {}
 
         self._build_banner()
         self._build_genome_table()
@@ -298,6 +329,13 @@ class GenomeSelectorApp:
         self._build_advanced_panel()
         self._build_action_buttons()
         self._build_output_panel()
+
+        # Everything above is the state this launcher starts in — command-line
+        # options included. "Reset All" restores exactly this.
+        self._launch_defaults = self._snapshot()
+        if restore:
+            self._load_settings()
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Fix Ctrl+A select-all in Entry/Combobox/Spinbox widgets
         def _select_all_text(event):
@@ -449,6 +487,15 @@ class GenomeSelectorApp:
         ToolTip(default_n_spin, "Default number of hits for new rows and Clear Fields")
         ttk.Button(btn_frame, text="Set All -n",
                    command=self._set_all_n).pack(side="left")
+
+        # Kept away from the buttons used routinely — this one discards work.
+        reset_btn = ttk.Button(btn_frame, text="Reset All",
+                               command=self._reset_all)
+        reset_btn.pack(side="right")
+        ToolTip(reset_btn,
+                "Clear every field back to the state this launcher starts in")
+        ttk.Separator(btn_frame, orient="vertical").pack(
+            side="right", fill="y", padx=8)
 
         # Selected hit databases display
         self.selected_label = tk.Label(self.root, text="Hit DBs: (none)",
@@ -751,6 +798,7 @@ class GenomeSelectorApp:
         """Build genome rows in the scrollable inner_frame."""
         genome_files = scan_genomes()
         self.rows = []
+        self.row_tokens = {}
 
         for i, gpath in enumerate(genome_files):
             tokens = detect_header_tokens(gpath)
@@ -759,7 +807,9 @@ class GenomeSelectorApp:
             tokens.insert(0, "id")
             default_hdr = "id"
 
-            chk_var = tk.BooleanVar(value=False)
+            rel = gpath.relative_to(GENOMES_DIR).as_posix()
+            self.row_tokens[rel] = tokens
+            chk_var = tk.BooleanVar(value=rel.casefold() in self.selected_genomes)
             hdr_var = tk.StringVar(value=default_hdr)
             sfx_var = tk.StringVar(value="none")
             n_var = tk.StringVar(value=str(self.default_n))
@@ -768,7 +818,6 @@ class GenomeSelectorApp:
             preview_var = tk.StringVar(
                 value=parse_header_token(example_header, default_hdr, sfx_var.get()))
 
-            rel = gpath.relative_to(GENOMES_DIR).as_posix()
             display_name = truncate_name(rel)
             lbl = tk.Label(self.inner_frame, text=display_name, anchor="w")
             lbl.grid(row=i, column=0, sticky="w", padx=4)
@@ -839,6 +888,122 @@ class GenomeSelectorApp:
         else:
             self.selected_label.configure(text="Hit DBs: (none)")
 
+    # ------------------------------------------------------------------
+    # Saved settings (snapshot / restore / reset)
+    # ------------------------------------------------------------------
+    def _snapshot_rows(self) -> dict:
+        return {
+            rel: {
+                "selected": chk_var.get(),
+                "hdr": hdr_var.get(),
+                "sfx": sfx_var.get(),
+                "n": n_var.get(),
+                "q": q_var.get(),
+            }
+            for chk_var, hdr_var, sfx_var, n_var, q_var, _gpath, rel in self.rows
+        }
+
+    def _snapshot(self) -> dict:
+        globals_ = {key: getattr(self, attr).get()
+                    for key, attr in GLOBAL_SETTING_VARS.items()}
+        globals_["adv_visible"] = self._adv_visible.get()
+        return {
+            "version": SETTINGS_VERSION,
+            "globals": globals_,
+            "rows": self._snapshot_rows(),
+        }
+
+    def _apply_rows(self, saved_rows: dict) -> list[str]:
+        """Apply saved per-row state. Returns warnings for stale headers."""
+        warnings = []
+        for chk_var, hdr_var, sfx_var, n_var, q_var, _gpath, rel in self.rows:
+            row = saved_rows.get(rel)
+            if not isinstance(row, dict):
+                continue  # genome added since the snapshot — keep its defaults
+            chk_var.set(bool(row.get("selected", False)))
+
+            hdr = str(row.get("hdr", "id"))
+            tokens = self.row_tokens.get(rel, [])
+            if tokens and hdr not in tokens:
+                warnings.append(
+                    f"  {rel}: header '{hdr}' is no longer in this file — using 'id'")
+                hdr = "id"
+            hdr_var.set(hdr)
+
+            sfx_var.set(str(row.get("sfx", "none")))
+            n_var.set(str(row.get("n", self.default_n)))
+            q_var.set(str(row.get("q", "")))
+        return warnings
+
+    def _apply_settings(self, data: dict) -> list[str]:
+        globals_ = data.get("globals") or {}
+        for key, attr in GLOBAL_SETTING_VARS.items():
+            if key not in globals_:
+                continue
+            var = getattr(self, attr)
+            value = globals_[key]
+            var.set(bool(value) if isinstance(var, tk.BooleanVar) else str(value))
+        # Keep self.default_n (used for new rows) in step with the spinbox.
+        self._set_default_n()
+
+        if bool(globals_.get("adv_visible", False)) != self._adv_visible.get():
+            self._toggle_advanced()
+
+        return self._apply_rows(data.get("rows") or {})
+
+    def _save_settings(self):
+        try:
+            SETTINGS_FILE.write_text(
+                json.dumps(self._snapshot(), indent=2), encoding="utf-8")
+        except OSError as exc:
+            self._set_output(f"Could not save settings to {SETTINGS_FILE.name}: {exc}")
+
+    def _load_settings(self):
+        if not SETTINGS_FILE.exists():
+            return
+        try:
+            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self._set_output(f"Ignoring unreadable {SETTINGS_FILE.name}: {exc}")
+            return
+        if not isinstance(data, dict) or data.get("version") != SETTINGS_VERSION:
+            self._set_output(
+                f"Ignoring {SETTINGS_FILE.name}: unrecognized settings format.")
+            return
+
+        # Command-line options win over the saved session.
+        if self._default_n_from_cli:
+            (data.get("globals") or {}).pop("default_n", None)
+
+        warnings = self._apply_settings(data)
+
+        # Genomes named on the command line win over the saved selection.
+        if self.selected_genomes:
+            for chk_var, _h, _s, _n, _q, _gpath, rel in self.rows:
+                chk_var.set(rel.casefold() in self.selected_genomes)
+
+        if warnings:
+            self._set_output("Restored previous settings, with changes:\n"
+                             + "\n".join(warnings))
+
+    def _reset_all(self):
+        confirm = messagebox.askyesno(
+            "Reset All",
+            "Reset every field to the state this launcher starts in?\n\n"
+            "Queries, header choices and advanced options will be cleared.",
+            default=messagebox.NO,
+            parent=self.root,
+        )
+        if not confirm:
+            return
+        self._apply_settings(self._launch_defaults)
+        self._save_settings()
+        self._set_output("")
+
+    def _on_close(self):
+        self._save_settings()
+        self.root.destroy()
+
     def _set_default_n(self) -> int | None:
         raw = self.default_n_var.get().strip()
         try:
@@ -860,13 +1025,19 @@ class GenomeSelectorApp:
     def _refresh(self):
         if hasattr(self, "default_n_var"):
             self._set_default_n()
+        # Rescanning rebuilds every row from scratch, so carry the current
+        # per-row state across; genomes added since are left at their defaults.
+        previous = self._snapshot_rows() if getattr(self, "rows", None) else {}
         _id_cache.clear()
         for widget in self.inner_frame.winfo_children():
             widget.destroy()
         self._populate_rows()
+        warnings = self._apply_rows(previous)
         self.root.update_idletasks()
         self._sync_columns()
         self._update_selected_display()
+        if warnings:
+            self._set_output("Refreshed, with changes:\n" + "\n".join(warnings))
 
     def _select_all(self):
         for chk_var, *_ in self.rows:
@@ -1015,6 +1186,7 @@ class GenomeSelectorApp:
         return parts
 
     def _generate(self):
+        self._save_settings()
         parts = self._build_args()
         if parts is None:
             return
@@ -1064,8 +1236,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--default-n",
         type=positive_int,
-        default=DEFAULT_N,
-        help=f"default number of BLAST hits per selected genome (default: {DEFAULT_N})",
+        default=None,
+        help=("default number of BLAST hits per selected genome "
+              f"(default: {DEFAULT_N}, or the saved value from the last session)"),
+    )
+    parser.add_argument(
+        "--select-genome",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=("preselect a genome by its path relative to genomes/; "
+              "repeat this option to select more than one. Overrides the "
+              "selection saved from the last session"),
+    )
+    parser.add_argument(
+        "--no-restore",
+        action="store_true",
+        help=f"start from defaults, ignoring {SETTINGS_FILE.name}",
     )
     return parser.parse_args(argv)
 
@@ -1073,7 +1260,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
     root = tk.Tk()
-    GenomeSelectorApp(root, default_n=args.default_n)
+    GenomeSelectorApp(
+        root,
+        default_n=args.default_n,
+        selected_genomes=args.select_genome,
+        restore=not args.no_restore,
+    )
     root.mainloop()
 
 
