@@ -415,6 +415,79 @@ blast-align-tree -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 \
                  -hdr gene: locus=
 ```
 
+### Identifier collisions and de-duplication
+
+`-hdr` turns a FASTA description into the short identifier used as a tree
+tip label, and that mapping is not one-to-one. `-hdr gene:` against
+TAIR10cds collapses `AT2G27490.1` and `AT2G27490.4` onto `AT2G27490`;
+10,690 of the 48,321 records in that database share a locus identifier
+with another record. Two genomes can also independently use the same
+gene symbol.
+
+The pipeline never resolves these silently. After the BLAST searches
+finish, but before results from several queries are merged, every
+identifier claimed by more than one source record is reported and
+resolved by an explicit rule:
+
+| Situation | What happens |
+| --- | --- |
+| Several isoforms or duplicated loci in one database share an identifier | The **longest amino-acid sequence** is retained; ties break on the lexicographically smallest source ID. The others are dropped and logged with the ID that replaced them. |
+| Two queries hit different records that share an identifier | Same rule, no separate prompt. |
+| Two **databases** use the same identifier | Both records are kept, each tagged with its genome (`RPS5_TAIR10cds`, `RPS5_NbLab360`). Nothing is dropped, so a genome can never vanish from the tree. |
+| The same record is hit by several queries | Not a collision. Counted as overlap and reported separately at the end of the run. |
+
+Note that the retained isoform is the longest one, which is not
+necessarily the isoform you passed as `-q`.
+
+With a terminal attached, each query's collisions are shown for
+confirmation before anything is merged:
+
+```
+  [ids] query 'AT1G71830.1': 6 identifier(s) claimed by more than one hit
+    AT2G13800  <- keep AT2G13800.1 (601 aa)
+        drop AT2G13800.3 (601 aa)
+        drop AT2G13800.2 (484 aa)
+        Deduplicate these 6 identifier(s) for 'AT1G71830.1'? [Y/n]
+```
+
+Answering `n` keeps every record instead, disambiguated as
+`AT2G13800__1`, `AT2G13800__2`, … Those suffixed labels will not join to
+`--datasets` tables keyed on the bare identifier, which is the trade-off
+for retaining all isoforms.
+
+Use `--duplicates` to control this:
+
+| Value | Behaviour |
+| --- | --- |
+| `ask` (default) | Confirm each query's collisions. Falls back to `auto` when there is no terminal, so batch and HPC runs never block. |
+| `auto` | Apply the rules without prompting and warn at the end. |
+| `fail` | Stop the run and list the collisions, so you can pick a more specific `-hdr` / `-hdr_sfx`. |
+
+Every run writes `deduplication_log.tsv` next to the tree PDFs in the
+timestamped run folder — one row per affected record, with the stage,
+query, database, identifier, action, source ID, amino-acid length, the
+original FASTA header, and the reason:
+
+```
+stage         query        database      identifier  action   source_id     aa_len
+within_query  AT1G71830.1  TAIR10cds.fa  AT2G13800   kept     AT2G13800.1   601
+within_query  AT1G71830.1  TAIR10cds.fa  AT2G13800   dropped  AT2G13800.3   601
+```
+
+The end of the run summarises the collisions and, separately, how much
+the queries overlapped:
+
+```
+  Identifier collisions
+    within a query          6  (isoforms / duplicated loci sharing one identifier)
+    between queries         0  (same identifier, different source records)
+    between databases       0  (genome tag appended, nothing dropped)
+    records dropped         9  (longest amino-acid sequence retained)
+
+  Overlap between queries
+    AT1G71830.1 ∩ AT4G33430.1: 12 shared of 15/15 hits in TAIR10cds.fa
+```
+
 ### Slicing query amino-acid ranges with `-aa`
 
 `-aa` trims each query to a sub-range (0-based, Python-style:

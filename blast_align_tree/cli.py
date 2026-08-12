@@ -22,15 +22,19 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-from typing import Iterable, List, Tuple, Optional
+from typing import Dict, Iterable, List, Set, Tuple, Optional
 import re
 import tempfile
 from datetime import datetime
 from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
+from . import identifiers
+from .identifiers import parse_header_token as _parse_header_token
+
 _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
+DEDUP_LOG_NAME = "deduplication_log.tsv"
 
 # Biopython
 try:
@@ -587,55 +591,76 @@ def _translate_fasta(in_fa: Path, out_fa: Path):
             out.write(">" + rec.description + "\n")
             out.write(str(aa) + "\n")
 
-def _parse_header_token(description: str, headerword: str, fallback_id: str, suffix: str = "") -> str:
-    """
-    Former: pull_id_fasta*.py logic
-    If headerword == 'id' → return fallback_id (record.id).
-    Else: find substring after the first occurrence of headerword and take until next space.
-    If headerword not found, return fallback_id.
-    If suffix is provided, strip it from the end of the token.
-    """
-    if headerword == "id":
-        token = fallback_id
-    elif headerword not in description:
-        token = fallback_id
-    else:
-        # Split on the headerword and take the part immediately following, up to first space
-        try:
-            part = description.split(headerword, 1)[1]
-            token = part.split(" ", 1)[0]
-        except Exception:
-            token = fallback_id
-    if suffix and token.endswith(suffix):
-        token = token[:-len(suffix)]
-    return token
+# _parse_header_token (former pull_id_fasta*.py logic) now lives in identifiers.py,
+# where the collision machinery that depends on it can reuse it.
 
-def _parse_fasta_headers(in_fa: Path, out_fa: Path, headerword: str, suffix: str = ""):
+def _final_id(rec, headerword: str, suffix: str,
+              id_map: Optional[Dict[str, str]]) -> Optional[str]:
+    """
+    Identifier to write for one record: the resolved one when identifier
+    reconciliation has run, otherwise the raw parsed token. None means the
+    record lost a collision and must not be written.
+    """
+    if id_map is None:
+        return _parse_header_token(rec.description, headerword, rec.id, suffix)
+    return id_map.get(rec.id)
+
+def _parse_fasta_headers(in_fa: Path, out_fa: Path, headerword: str, suffix: str = "",
+                         id_map: Optional[Dict[str, str]] = None):
     """
     Write a new FASTA where each header is the parsed token.
+
+    With id_map (source_id -> resolved identifier) the map is authoritative:
+    records absent from it were dropped by collision resolution and are skipped.
     """
     ensure_dir(out_fa.parent)
     with open(out_fa, "w", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
-            token = _parse_header_token(rec.description, headerword, rec.id, suffix)
+            token = _final_id(rec, headerword, suffix, id_map)
+            if token is None:
+                continue
             out.write(f">{token}\n{str(rec.seq)}\n")
 
-def _coding_table(in_fa: Path, out_txt: Path, headerword: str, db_name: str, suffix: str = ""):
+def _coding_table(in_fa: Path, out_txt: Path, headerword: str, db_name: str, suffix: str = "",
+                  id_map: Optional[Dict[str, str]] = None):
     """
     Create <parsed_token>\t<db_name> lines for each record.
     """
     ensure_dir(out_txt.parent)
     with open(out_txt, "a", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
-            token = _parse_header_token(rec.description, headerword, rec.id, suffix)
+            token = _final_id(rec, headerword, suffix, id_map)
+            if token is None:
+                continue
             out.write(f"{token}\t{db_name}\n")
 
-def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id: str):
+def _unique_added_id(seq_id: str, db: str, taken: Set[str]) -> str:
+    """
+    Identifier for an -add sequence that does not already belong to a hit.
+
+    Added sequences bypass header parsing and are appended after the merge, so
+    they are the one remaining way a record could silently overwrite another.
+    Same policy as a cross-database collision: tag it, never drop it.
+    """
+    if seq_id not in taken:
+        return seq_id
+    tagged = f"{seq_id}_{identifiers.genome_tag(db)}"
+    if tagged not in taken:
+        return tagged
+    rank = 2
+    while f"{tagged}__{rank}" in taken:
+        rank += 1
+    return f"{tagged}__{rank}"
+
+
+def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id: str,
+                             taken: Optional[Set[str]] = None) -> Optional[dict]:
     """
     Former: add_translations.py
     Append translation of seq_id from genomes/<db> to:
       - <entry>/<entry>.parse.merged.fa
       - <entry>/merged_coding.txt
+    Returns a de-duplication log row if the identifier had to be changed.
     """
     src = genomes_dir / db
     out_fa = entry_dir / f"{entry_dir.name}.parse.merged.fa"
@@ -645,12 +670,26 @@ def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id
 
     for rec in SeqIO.parse(str(src), "fasta"):
         if rec.id == seq_id:
+            aa = str(translate(rec.seq))
+            final_id = _unique_added_id(rec.id, db, taken if taken is not None else set())
             with open(out_fa, "a", encoding="utf-8") as fa:
-                fa.write(f">{rec.id}\n{str(translate(rec.seq))}\n")
+                fa.write(f">{final_id}\n{aa}\n")
             with open(out_txt, "a", encoding="utf-8") as txt:
-                txt.write(f"\n{rec.id}\t{db}")
+                txt.write(f"\n{final_id}\t{db}")
+            if taken is not None:
+                taken.add(final_id)
+            if final_id != rec.id:
+                print(f"[add] added {seq_id} from {db} as '{final_id}' "
+                      f"(identifier already used by a BLAST hit)")
+                return {
+                    "stage": "added_sequence", "query": "-add", "database": db,
+                    "identifier": final_id, "action": "renamed", "source_id": rec.id,
+                    "aa_len": len(aa), "original_header": rec.description,
+                    "reason": f"-add sequence '{rec.id}' collided with an existing "
+                              f"identifier; renamed so neither record is lost",
+                }
             print(f"[add] added {seq_id} from {db}")
-            return
+            return None
     raise SystemExit(f"Sequence id '{seq_id}' not found in {src}")
 
 # -----------------------
@@ -743,11 +782,188 @@ def translate_and_parse_headers(
         _parse_fasta_headers(in_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
         _coding_table(in_aa, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.coding.txt", header_rule, db, header_suffix)
 
-def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path):
+# -----------------------
+# Identifier reconciliation (step 3.5)
+# -----------------------
+
+def _prompt_yes(question: str) -> bool:
+    """Ask once; anything but an explicit 'n' accepts. EOF accepts."""
+    try:
+        answer = input(f"{question} [Y/n] ").strip().lower()
+    except EOFError:
+        return True
+    return not answer.startswith("n")
+
+
+def _confirm_collisions(collisions: List["identifiers.Collision"], mode: str) -> Set[Tuple[str, str]]:
+    """
+    Review identifier collisions per query, before results from several queries
+    are merged. Returns the (db, token) pairs the user refused to deduplicate.
+    """
+    lossy = [c for c in collisions if c.kind != identifiers.CROSS_DATABASE]
+    grouped = identifiers.collisions_by_query(collisions)
+
+    if not collisions:
+        print("  [ids] no identifier collisions: every parsed identifier maps to one source record")
+        return set()
+
+    if mode == "fail" and lossy:
+        for line in identifiers.format_collision_lines(lossy, limit=25):
+            print(line, file=sys.stderr)
+        raise SystemExit(
+            f"--duplicates fail: {len(lossy)} identifier collision(s) would discard records. "
+            "Choose a more specific -hdr / -hdr_sfx rule, or rerun with --duplicates ask|auto."
+        )
+
+    interactive = mode == "ask" and sys.stdin is not None and sys.stdin.isatty()
+    declined: Set[Tuple[str, str]] = set()
+
+    if not interactive:
+        if lossy:
+            print(f"  [ids] {len(lossy)} identifier collision(s) resolved automatically "
+                  f"(longest amino-acid sequence retained)")
+        return declined
+
+    for query in sorted(grouped):
+        cols = grouped[query]
+        print(f"\n  [ids] query '{query}': {len(cols)} identifier(s) claimed by more than one hit")
+        for line in identifiers.format_collision_lines(cols):
+            print(line)
+        print("        Answering 'n' keeps every record instead, disambiguated with __1/__2 suffixes")
+        print("        (suffixed labels will not join to --datasets tables keyed on the bare identifier).")
+        if not _prompt_yes(f"        Deduplicate these {len(cols)} identifier(s) for '{query}'?"):
+            declined.update((c.db, c.token) for c in cols)
+            print(f"        keeping all records for '{query}'")
+
+    return declined
+
+
+def reconcile_identifiers(
+    entry: str,
+    queries: List[str],
+    databases: List[str],
+    hdr_rules_by_db: Dict[str, Tuple[str, str]],
+    workdir: Path,
+    blast_type: str,
+    mode: str,
+):
+    """
+    Between BLAST and the cross-query merge: find every identifier backed by more
+    than one source record, confirm the losses, then rewrite the parsed FASTAs and
+    coding tables so a single resolved identifier flows into every later step.
+
+    Returns (index, resolution, log_rows).
+    """
+    entry_dir = workdir / entry
+    bt = bt_suffix(blast_type)
+
+    index = identifiers.build_index(entry_dir, queries, databases, hdr_rules_by_db,
+                                    blast_type, bt, db_label)
+    collisions = identifiers.detect(index)
+    declined = _confirm_collisions(collisions, mode)
+    res = identifiers.resolve(index, collisions, declined)
+
+    _apply_identifiers(entry, queries, databases, hdr_rules_by_db, workdir, blast_type, res)
+
+    return index, res, identifiers.build_log_rows(index, res)
+
+
+def _apply_identifiers(
+    entry: str,
+    queries: List[str],
+    databases: List[str],
+    hdr_rules_by_db: Dict[str, Tuple[str, str]],
+    workdir: Path,
+    blast_type: str,
+    res: "identifiers.Resolution",
+):
+    """
+    Regenerate the per-(query, db) parsed FASTAs and coding tables from the
+    resolved identifier map.
+
+    This is the single enforcement point: afterwards every downstream
+    dedup_fasta_by_id() call can only collapse records that are genuinely the
+    same source record hit by more than one query.
+    """
+    entry_dir = workdir / entry
+    bt = bt_suffix(blast_type)
+
+    for db in databases:
+        dbl = db_label(db)
+        hdr, sfx = hdr_rules_by_db[db]
+        id_map = res.submap(db)
+
+        for q in queries:
+            aa = identifiers.aa_source_path(entry_dir, q, dbl, bt, blast_type)
+            if not aa.is_file():
+                continue
+
+            if blast_type == "tblastn":
+                nt = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa"
+                if nt.is_file():
+                    _parse_fasta_headers(nt, nt.with_name(nt.name + ".parse.fa"),
+                                         hdr, sfx, id_map=id_map)
+
+            _parse_fasta_headers(aa, aa.with_name(aa.name + ".parse.fa"), hdr, sfx, id_map=id_map)
+
+            coding = aa.with_name(aa.name + ".coding.txt")
+            _unlink_file_if_exists(coding)   # _coding_table appends
+            _coding_table(aa, coding, hdr, db, sfx, id_map=id_map)
+
+
+def print_collision_report(collisions, res, log_path: Optional[Path], mode: str):
+    """End-of-run account of every identifier that was contested."""
+    counts = identifiers.summarize(collisions, res)
+    total = counts[identifiers.ISOFORM] + counts[identifiers.CROSS_QUERY] + counts[identifiers.CROSS_DATABASE]
+
+    print(f"\n  Identifier collisions")
+    if total == 0:
+        print("    none: every parsed identifier mapped to exactly one source record")
+        return
+
+    print(f"    within a query      {counts[identifiers.ISOFORM]:>5}  "
+          f"(isoforms / duplicated loci sharing one identifier)")
+    print(f"    between queries     {counts[identifiers.CROSS_QUERY]:>5}  "
+          f"(same identifier, different source records)")
+    print(f"    between databases   {counts[identifiers.CROSS_DATABASE]:>5}  "
+          f"(genome tag appended, nothing dropped)")
+    print(f"    records dropped     {counts['records_dropped']:>5}  "
+          f"(longest amino-acid sequence retained)")
+    if counts["declined"]:
+        print(f"    kept on request     {counts['declined']:>5}  "
+              f"(suffixed __1/__2 instead of deduplicated)")
+    if mode != "ask" and counts["records_dropped"]:
+        print(f"    [warn] resolved without confirmation (--duplicates {mode})")
+    if log_path is not None:
+        print(f"    Full record-level log: {log_path}")
+
+
+def print_query_overlap(overlaps, queries: List[str]):
+    """
+    Redundancy between queries, reported apart from collisions: these are the
+    same source records found by more than one query, which is expected.
+    """
+    if len(queries) < 2:
+        return
+    print(f"\n  Overlap between queries")
+    if not overlaps:
+        print("    none: no source record was hit by more than one query")
+        return
+    for ov in overlaps:
+        print(f"    {ov.query_a} ∩ {ov.query_b}: {ov.shared} shared "
+              f"of {ov.total_a}/{ov.total_b} hits in {ov.db}")
+
+
+def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path,
+                              taken: Optional[Set[str]] = None) -> List[dict]:
     genomes_dir = workdir / "genomes"
     entry_dir = workdir / entry
+    rows = []
     for db, seq in zip(add_dbs, add_seqs):
-        _add_translation_from_db(genomes_dir, entry_dir, db, seq)
+        row = _add_translation_from_db(genomes_dir, entry_dir, db, seq, taken)
+        if row:
+            rows.append(row)
+    return rows
 
 def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str, raxml_seed: Optional[int] = None):
     
@@ -1515,6 +1731,12 @@ def main():
                     help="Allow overlapping motif matches (uses regex lookahead).")
     ap.add_argument("--hmm", dest="hmms", nargs="*", default=[],
                     help="One or more HMMER profile files (.hmm). Scans unaligned AA sequences with hmmscan.")
+    ap.add_argument("--duplicates", choices=["ask", "auto", "fail"], default="ask",
+                    help="What to do when one parsed identifier is claimed by several source "
+                         "records. 'ask' (default) confirms each query's collisions before "
+                         "queries are merged, falling back to 'auto' with no terminal; "
+                         "'auto' resolves them without prompting; 'fail' stops the run. "
+                         "Every outcome is written to " + DEDUP_LOG_NAME + " beside the PDFs.")
     args = ap.parse_args()
     blast_type = args.blast_type
 
@@ -1579,6 +1801,20 @@ def main():
     blast_dt = blast_end - blast_start
     print(f"  BLAST time: {blast_dt}")
 
+    hdr_rules_by_db = {
+        db: (hdr, sfx)
+        for db, hdr, sfx in zip(args.database, args.header, header_suffixes)
+    }
+
+    # Step 3.5: reconcile parsed identifiers while results are still per-query.
+    # Runs before any merge so collisions that discard records are confirmed
+    # separately from the redundancy that merging queries is expected to produce.
+    print(f"\n→ Checking parsed identifiers")
+    hit_index, resolution, dedup_log_rows = reconcile_identifiers(
+        entry, args.queries, args.database, hdr_rules_by_db,
+        workdir, blast_type, args.duplicates,
+    )
+
     print(f"\n→ Merging results")
     # Step 3: combine coding txt → merged_genome_mapping.txt and prepend header
     coding_txts = sorted(entry_dir.glob("*.coding.txt"))
@@ -1634,6 +1870,17 @@ def main():
     if tree_label_stats is not None:
         print_hdr_condense_summary("final tree labels from -hdr parsing", tree_label_stats)
 
+    # The merge above may only collapse records that identifier reconciliation
+    # already accounted for. If the tree gets fewer tips than the resolution
+    # promised, something was lost outside the audited path.
+    expected_labels = len(set(resolution.final_ids.values()))
+    if tree_label_stats is not None and tree_label_stats.output_records != expected_labels:
+        raise SystemExit(
+            f"Identifier accounting failed: merged tree labels = "
+            f"{tree_label_stats.output_records}, resolved identifiers = {expected_labels}. "
+            f"Records were lost outside the de-duplication log; please report this."
+        )
+
     # Step 5: per-database merges → Orthofinder-ready copies
     orthof = run_assets_dir(entry_dir) / "hits" / "orthofinder-input"
     ensure_dir(orthof)
@@ -1642,10 +1889,6 @@ def main():
     else:
         pattern = f"*.{{dbl}}.seq.{bt}.blastdb.fa.parse.fa"
 
-    hdr_rules_by_db = {
-        db: (hdr, sfx)
-        for db, hdr, sfx in zip(args.database, args.header, header_suffixes)
-    }
     for db in args.database:
         dbl = db_label(db)
         db_parts = sorted(entry_dir.glob(pattern.format(dbl=dbl)))
@@ -1660,7 +1903,10 @@ def main():
 
     # Step 6: optional add translations
     if args.add_seqs:
-        optional_add_translations(entry, args.add_dbs, args.add_seqs, workdir)
+        dedup_log_rows.extend(optional_add_translations(
+            entry, args.add_dbs, args.add_seqs, workdir,
+            taken=set(resolution.final_ids.values()),
+        ))
 
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
@@ -1706,6 +1952,15 @@ def main():
     print(f"\n→ Cleaning run-root intermediates")
     cleanup_run_root(entry_dir, entry, args.queries, args.database, blast_type)
 
+    # Step 9.5: write the de-duplication log. After cleanup, because
+    # _move_top_level_run_assets() sweeps every non-PDF file out of the run root;
+    # before archiving, so it travels into runs/<timestamp>/ beside the PDFs.
+    identifiers.write_log(
+        entry_dir / DEDUP_LOG_NAME, dedup_log_rows,
+        entry=entry, blast_type=blast_type,
+        hdr_rules_by_db=hdr_rules_by_db, mode=args.duplicates,
+    )
+
     # Step 10: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_dir = archive_run(entry_dir, timestamp)
@@ -1713,6 +1968,10 @@ def main():
     print(f"\n{'='*50}")
     print(f"  Done.")
     print(f"{'='*50}")
+    print_collision_report(resolution.collisions, resolution,
+                           run_dir / DEDUP_LOG_NAME, args.duplicates)
+    print_query_overlap(identifiers.query_overlaps(hit_index), args.queries)
+    print()
     print(f"  Alignment: {run_dir / RUN_ASSETS_DIRNAME / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / RUN_ASSETS_DIRNAME / 'combinedtree.nwk'}")
     print(f"  Mapping:   {run_dir / RUN_ASSETS_DIRNAME / 'merged_genome_mapping.txt'}")
