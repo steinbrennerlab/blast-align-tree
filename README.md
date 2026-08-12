@@ -488,6 +488,76 @@ the queries overlapped:
     AT1G71830.1 ∩ AT4G33430.1: 12 shared of 15/15 hits in TAIR10cds.fa
 ```
 
+### Internal stop codons and reading frame
+
+`tblastn` hits are retrieved as whole nucleotide records and translated in
+**forward frame +1 of the record as stored in the database**. The frame and
+strand are never inferred from the data. This is correct for CDS databases (all
+bundled genomes) and wrong for transcript databases whose entries carry a 5′ UTR.
+
+`--internal-stops` controls what happens when a record contains an in-frame stop:
+
+| Value | Behaviour |
+|---|---|
+| `truncate` *(default)* | Translation ends at the first in-frame stop. The reported protein is the truncated product the locus encodes. Residue *p* maps to nucleotides `3p−2..3p` of the record. |
+| `readthrough` | Every codon kept in register; each in-frame stop written as `X`. Use when downstream domain content matters, e.g. comparing domain architecture across a degraded locus. |
+| `excise` | Legacy v1.0 behaviour: stop codons deleted and the flanking sequence joined. Produces a protein the genome does not encode and shifts downstream coordinates by one residue per excised stop. Kept only to reproduce older runs. |
+
+A well-formed CDS — begins with `ATG`, ends with a stop, no internal stops —
+gives identical output under all three. The nucleotide outputs
+(`all_hits.nt.fa`, `<entry>.nt.parse.merged.fa`) are always the untransformed
+records as returned by `blastdbcmd`, whatever the policy.
+
+Every `tblastn` run writes **`translation_report.tsv`** beside the tree PDFs,
+one row per sequence:
+
+| Column | Meaning |
+|---|---|
+| `identifier`, `source_id`, `database`, `queries` | which record this is, and which queries found it |
+| `action` | `kept`, or `dropped` if identifier reconciliation discarded it |
+| `nt_len`, `n_codons` | length of the retrieved record |
+| `frame`, `strand` | always `+1` and the stored strand, stated per row so the assumption is never implicit |
+| `start_codon`, `terminal_stop` | whether the record looks like a complete CDS |
+| `n_internal_stops`, `first_stop_aa_pos` | how many stops, and where the first one is (1-based) |
+| `aa_len_reported` | length actually written, under the policy in force |
+| `aa_len_ranking` | length excluding stops; identical under every policy, and what isoform ranking uses — so the stop policy cannot change which isoform wins a collision |
+| `aa_after_first_stop` | codons remaining in frame after the first internal stop |
+| `longest_downstream_orf_aa` | longest stop-free run after it — what matters for judging whether a real ORF survives downstream |
+| `best_frame` | the frame that reads furthest, from a six-frame diagnostic translation |
+| `flags` | see below |
+| `policy` | the `--internal-stops` value in force |
+
+Flags:
+
+| Flag | Meaning |
+|---|---|
+| `internal_stop` | at least one in-frame stop before the end of the record |
+| `no_start_codon` / `no_terminal_stop` | the record does not look like a complete CDS |
+| `len_not_multiple_of_3` | trailing bases could not be translated |
+| `frame_mismatch:<frame>` | another frame reads substantially further |
+| `possible_utr` | that frame is a forward frame — the database may hold transcripts with 5′ UTRs rather than CDS |
+| `possible_wrong_strand` | that frame is a reverse frame |
+| `orf_mostly_downstream` | more coding potential after the first stop than before it; the truncated protein is unlikely to be the real product |
+| `empty_translation` | no complete codon could be translated |
+
+Flagged records are **reported, never re-framed** — the frame actually used is
+always +1. A database that trips `possible_utr` on many hits probably holds
+transcripts rather than CDS.
+
+```
+  [translation] 10 sequences translated in frame +1 (strand: + (record as stored in the database; not inferred))
+    Internal stop policy: truncate - translation ends at the first in-frame stop; the truncated protein is reported
+    7 of 10 sequences contain an internal stop -> truncated at the first stop
+    5 flagged orf_mostly_downstream: more coding potential after the first stop than before it
+
+    !! 4 sequences read further in another frame.
+       Frame +1 is used regardless - these were NOT re-framed.
+       2 flagged possible_utr: the database may hold transcripts with 5' UTRs rather than CDS.
+       2 flagged possible_wrong_strand.
+           4  SynthTranscripts.fa
+       Check these databases before interpreting the affected proteins.
+```
+
 ### Slicing query amino-acid ranges with `-aa`
 
 `-aa` trims each query to a sub-range (0-based, Python-style:

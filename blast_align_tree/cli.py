@@ -30,11 +30,13 @@ from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
 from . import identifiers
+from . import translation
 from .identifiers import parse_header_token as _parse_header_token
 
 _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
+TRANSLATION_REPORT_NAME = "translation_report.tsv"
 
 # Biopython
 try:
@@ -431,12 +433,13 @@ def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases:
 
     if blast_type == "tblastn":
         staging_patterns = [
-            f"*.seq.{bt}.blastdb.stop.fa",
             f"*.seq.{bt}.blastdb.fa",
             f"*.seq.{bt}.blastdb.fa.parse.fa",
             f"*.seq.{bt}.blastdb.translate.fa",
             f"*.seq.{bt}.blastdb.translate.fa.parse.fa",
             f"*.seq.{bt}.blastdb.translate.fa.coding.txt",
+            # Per-job translation stats; already merged into the run's report.
+            f"*{translation.SIDECAR_SUFFIX}",
         ]
         staging_files = [
             entry_dir / f"{entry}.seq.{bt}.blastdb.merged.fa",
@@ -502,6 +505,11 @@ def _extract_translate_tblastn(genomes_dir: Path, entry_dir: Path, q: str, qdb: 
     - Find nucleotide FASTA record with id==q in genomes/<qdb>
     - Translate to AA (optionally slice aa_start:aa_end)
     - Write to <entry>/<q>.seq.fa
+
+    The query translation is deliberately *not* subject to the internal-stop
+    policy: altering it would change the tblastn query itself, and with it every
+    hit set the run produces. It is diagnosed and warned about instead, because a
+    query whose frame is wrong silently degrades the entire search.
     """
     src = genomes_dir / qdb
     dest = entry_dir / f"{q}.seq.fa"
@@ -516,6 +524,7 @@ def _extract_translate_tblastn(genomes_dir: Path, entry_dir: Path, q: str, qdb: 
     with open(dest, "w", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(src), "fasta"):
             if rec.id == q:
+                _warn_on_query_translation(q, qdb, str(rec.seq))
                 aa = str(translate(rec.seq))
                 if aa_start is not None:
                     aa = aa[aa_start:aa_end]
@@ -525,6 +534,22 @@ def _extract_translate_tblastn(genomes_dir: Path, entry_dir: Path, q: str, qdb: 
 
     if not found:
         raise SystemExit(f"Query id '{q}' not found in nucleotide FASTA '{src}' for translation")
+
+
+def _warn_on_query_translation(q: str, qdb: str, nt: str):
+    """Report, without correcting, anything odd about the query's own reading."""
+    stat = translation.analyze(nt, source_id=q, policy=translation.READTHROUGH)
+    if not stat.flags:
+        return
+    print(f"  [query] {q} ({qdb}): {', '.join(stat.flags)}")
+    if stat.has_internal_stop:
+        print(f"          {stat.n_internal_stops} internal stop(s), first at aa "
+              f"{stat.first_stop_aa_pos}. The query is used as translated, stops "
+              f"included; tblastn cannot match them.")
+    if stat.frame_suspect:
+        print(f"          Frame {translation.USED_FRAME} is used regardless, but this record "
+              f"reads further in frame {stat.best_frame}. Check that '{qdb}' holds CDS "
+              f"rather than transcripts, or supply the query as protein with -blast_type blastp.")
 
 def _extract_copy_blastp(genomes_dir: Path, entry_dir: Path, q: str, qdb: str):
     """
@@ -551,45 +576,31 @@ def _extract_copy_blastp(genomes_dir: Path, entry_dir: Path, q: str, qdb: str):
     if not found:
         raise SystemExit(f"Query id '{q}' not found in protein FASTA '{src}'")
 
-def _remove_stop_codons(in_fa: Path, out_fa: Path):
-    """
-    Former: remove_stop.py
-    Remove TAG/TGA/TAA anywhere in-frame across the sequence.
-    """
-    stops = {"TAG", "TGA", "TAA"}
-    my_records = []
-    for record in SeqIO.parse(str(in_fa), "fasta"):
-        seq_list = list(str(record.seq))
-        i = 0
-        while i + 2 < len(seq_list):
-            codon = "".join(seq_list[i:i+3]).upper()
-            if codon in stops:
-                del seq_list[i:i+3]
-                # do not advance i; next codon now at same index
-            else:
-                i += 3
-        record.seq = Seq("".join(seq_list))
-        my_records.append(record)
-    ensure_dir(out_fa.parent)
-    SeqIO.write(my_records, str(out_fa), "fasta")
-
-def _translate_fasta(in_fa: Path, out_fa: Path):
+def _translate_fasta(in_fa: Path, out_fa: Path, policy: str,
+                     sidecar: Optional[Path] = None,
+                     database: str = "", query: str = ""):
     """
     Former: translate_db.py
-    For each nucleotide record in in_fa, write translated AA with the original description as header.
+    For each nucleotide record in in_fa, write the amino-acid sequence the
+    internal-stop policy calls for, keeping the original description as header.
+
+    Also records what the stops implied, per record, into a sidecar TSV. Sidecars
+    rather than shared state because this runs inside the BLAST thread pool; they
+    are merged into the run's translation report once every job has finished.
     """
     ensure_dir(out_fa.parent)
+    stats: List[translation.TranslationStat] = []
     with open(out_fa, "w", encoding="utf-8") as out:
         for rec in SeqIO.parse(str(in_fa), "fasta"):
-            seq = rec.seq
-
-            #enforce full codons AFTER stop removal
-            seq = seq[:len(seq) - (len(seq) % 3)]
-
-            aa = translate(seq)  # keep semantics unchanged
-
+            aa, stat = translation.translate_record(
+                str(rec.seq), source_id=rec.id, description=rec.description,
+                policy=policy)
+            stats.append(stat)
             out.write(">" + rec.description + "\n")
-            out.write(str(aa) + "\n")
+            out.write(aa + "\n")
+
+    if sidecar is not None:
+        translation.write_sidecar(sidecar, stats, database=database, query=query)
 
 # _parse_header_token (former pull_id_fasta*.py logic) now lives in identifiers.py,
 # where the collision machinery that depends on it can reuse it.
@@ -654,13 +665,19 @@ def _unique_added_id(seq_id: str, db: str, taken: Set[str]) -> str:
 
 
 def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id: str,
-                             taken: Optional[Set[str]] = None) -> Optional[dict]:
+                             taken: Optional[Set[str]] = None,
+                             stop_policy: str = translation.DEFAULT_POLICY,
+                             stats_out: Optional[List] = None) -> Tuple[Optional[dict], str]:
     """
     Former: add_translations.py
     Append translation of seq_id from genomes/<db> to:
       - <entry>/<entry>.parse.merged.fa
       - <entry>/merged_coding.txt
-    Returns a de-duplication log row if the identifier had to be changed.
+
+    An -add sequence is a tree tip like any other, so it follows the run's
+    internal-stop policy and is reported alongside the hits.
+
+    Returns (de-duplication log row if the identifier had to be changed, final id).
     """
     src = genomes_dir / db
     out_fa = entry_dir / f"{entry_dir.name}.parse.merged.fa"
@@ -670,7 +687,11 @@ def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id
 
     for rec in SeqIO.parse(str(src), "fasta"):
         if rec.id == seq_id:
-            aa = str(translate(rec.seq))
+            aa, stat = translation.translate_record(
+                str(rec.seq), source_id=rec.id, description=rec.description,
+                policy=stop_policy)
+            if stats_out is not None:
+                stats_out.append(stat)
             final_id = _unique_added_id(rec.id, db, taken if taken is not None else set())
             with open(out_fa, "a", encoding="utf-8") as fa:
                 fa.write(f">{final_id}\n{aa}\n")
@@ -687,9 +708,9 @@ def _add_translation_from_db(genomes_dir: Path, entry_dir: Path, db: str, seq_id
                     "aa_len": len(aa), "original_header": rec.description,
                     "reason": f"-add sequence '{rec.id}' collided with an existing "
                               f"identifier; renamed so neither record is lost",
-                }
+                }, final_id
             print(f"[add] added {seq_id} from {db}")
-            return None
+            return None, final_id
     raise SystemExit(f"Sequence id '{seq_id}' not found in {src}")
 
 # -----------------------
@@ -740,12 +761,14 @@ def blast_and_post(entry: str, q: str, db: str, max_targets: str, workdir: Path,
     ])
     prepend_header_line(full, "hit query_id	subject_id	pct_identity	aln_length	n_of_mismatches	gap_openings	q_start q_end	s_start   s_end	e_value bit_score\n")
 
-    # Fetch sequences from the BLAST DB for the hit list
+    # Fetch sequences from the BLAST DB for the hit list.
+    # The nucleotide file is what blastdbcmd returned, untouched: it is the
+    # record as the input genome encodes it, and it is the reference the
+    # translation report's coordinates and metrics are stated against. Any
+    # stop-codon handling happens on the way to amino acids, never here.
     if blast_type == "tblastn":
-        stop_fa = Path(str(out_base) + ".blastdb.stop.fa")
         nt_fa   = Path(str(out_base) + ".blastdb.fa")
-        run(["blastdbcmd", "-db", str(db_path), "-entry_batch", str(out_base), "-out", str(stop_fa)])
-        _remove_stop_codons(stop_fa, nt_fa)
+        run(["blastdbcmd", "-db", str(db_path), "-entry_batch", str(out_base), "-out", str(nt_fa)])
         return str(out_base), str(full), str(nt_fa)
     else:
         prot_fa = Path(str(out_base) + ".blastdb.fa")
@@ -759,7 +782,8 @@ def translate_and_parse_headers(
     header_rule: str,
     workdir: Path,
     blast_type: str,
-    header_suffix: str = ""):
+    header_suffix: str = "",
+    stop_policy: str = translation.DEFAULT_POLICY):
     bt = bt_suffix(blast_type)
     entry_dir = workdir / entry
     dbl = db_label(db)
@@ -768,7 +792,9 @@ def translate_and_parse_headers(
         # translate_db produces *.seq.tblastn.blastdb.translate.fa
         in_nt = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa"
         out_aa = entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.translate.fa"
-        _translate_fasta(in_nt, out_aa)
+        _translate_fasta(in_nt, out_aa, stop_policy,
+                         sidecar=Path(str(out_aa) + translation.SIDECAR_SUFFIX),
+                         database=db, query=q)
 
         # pull_id_fasta for nt and translated
         _parse_fasta_headers(in_nt, entry_dir / f"{q}.{dbl}.seq.{bt}.blastdb.fa.parse.fa", header_rule, header_suffix)
@@ -838,6 +864,21 @@ def _confirm_collisions(collisions: List["identifiers.Collision"], mode: str) ->
     return declined
 
 
+def _ranking_lengths(entry_dir: Path) -> Dict[Tuple[str, str], int]:
+    """
+    (database, source_id) -> stop-independent amino-acid length, read from the
+    translation sidecars. Keeps isoform ranking from shifting when the
+    internal-stop policy changes; see identifiers.build_index().
+    """
+    lengths: Dict[Tuple[str, str], int] = {}
+    for row in translation.read_sidecars(entry_dir.glob(f"*{translation.SIDECAR_SUFFIX}")):
+        try:
+            lengths[(row["database"], row["source_id"])] = int(row["aa_len_ranking"])
+        except (KeyError, ValueError):
+            continue
+    return lengths
+
+
 def reconcile_identifiers(
     entry: str,
     queries: List[str],
@@ -858,7 +899,8 @@ def reconcile_identifiers(
     bt = bt_suffix(blast_type)
 
     index = identifiers.build_index(entry_dir, queries, databases, hdr_rules_by_db,
-                                    blast_type, bt, db_label)
+                                    blast_type, bt, db_label,
+                                    ranking_lengths=_ranking_lengths(entry_dir))
     collisions = identifiers.detect(index)
     declined = _confirm_collisions(collisions, mode)
     res = identifiers.resolve(index, collisions, declined)
@@ -955,15 +997,33 @@ def print_query_overlap(overlaps, queries: List[str]):
 
 
 def optional_add_translations(entry: str, add_dbs: List[str], add_seqs: List[str], workdir: Path,
-                              taken: Optional[Set[str]] = None) -> List[dict]:
+                              taken: Optional[Set[str]] = None,
+                              stop_policy: str = translation.DEFAULT_POLICY
+                              ) -> Tuple[List[dict], Dict[Tuple[str, str], str]]:
+    """
+    Returns the de-duplication log rows and, so the translation report can label
+    added sequences with the tip name they end up carrying, a
+    (database, source_id) -> identifier map.
+    """
     genomes_dir = workdir / "genomes"
     entry_dir = workdir / entry
     rows = []
+    added_ids: Dict[Tuple[str, str], str] = {}
+    stats_by_db: Dict[str, list] = {}
     for db, seq in zip(add_dbs, add_seqs):
-        row = _add_translation_from_db(genomes_dir, entry_dir, db, seq, taken)
+        stats: list = []
+        row, final_id = _add_translation_from_db(genomes_dir, entry_dir, db, seq, taken,
+                                                 stop_policy, stats)
         if row:
             rows.append(row)
-    return rows
+        added_ids[(db, seq)] = final_id
+        stats_by_db.setdefault(db, []).extend(stats)
+
+    for db, stats in stats_by_db.items():
+        translation.write_sidecar(
+            entry_dir / f"added.{db_label(db)}.translate.fa{translation.SIDECAR_SUFFIX}",
+            stats, database=db, query="-add")
+    return rows, added_ids
 
 def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: str, threads: int, mafft_mode: str, raxml_seed: Optional[int] = None):
     
@@ -1731,6 +1791,16 @@ def main():
                     help="Allow overlapping motif matches (uses regex lookahead).")
     ap.add_argument("--hmm", dest="hmms", nargs="*", default=[],
                     help="One or more HMMER profile files (.hmm). Scans unaligned AA sequences with hmmscan.")
+    ap.add_argument("--internal-stops", dest="internal_stops",
+                    choices=list(translation.POLICIES), default=translation.DEFAULT_POLICY,
+                    help="What to do when a nucleotide hit contains an in-frame stop codon. "
+                         "'truncate' (default) ends the translation at the first stop, so the "
+                         "reported protein is the truncated product the locus encodes; "
+                         "'readthrough' keeps every codon in register and writes each stop as "
+                         "'X'; 'excise' is the legacy v1.0 behaviour that deletes stop codons "
+                         "and joins the flanking sequence, kept only to reproduce older runs. "
+                         "Every sequence is reported in " + TRANSLATION_REPORT_NAME +
+                         " beside the PDFs. Applies to tblastn runs only.")
     ap.add_argument("--duplicates", choices=["ask", "auto", "fail"], default="ask",
                     help="What to do when one parsed identifier is claimed by several source "
                          "records. 'ask' (default) confirms each query's collisions before "
@@ -1789,7 +1859,8 @@ def main():
     def _one(job: Tuple[str, str, str, str, str]):
         q, db, n, hdr, sfx = job
         out_base, full, fetched_fa = blast_and_post(entry, q, db, n, workdir, blast_type)
-        translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type, sfx)
+        translate_and_parse_headers(entry, q, db, hdr, workdir, blast_type, sfx,
+                                    stop_policy=args.internal_stops)
         return job
 
     blast_start = datetime.now()
@@ -1902,11 +1973,26 @@ def main():
         shutil.copyfile(db_rmdup, orthof / dbl)
 
     # Step 6: optional add translations
+    added_ids: Dict[Tuple[str, str], str] = {}
     if args.add_seqs:
-        dedup_log_rows.extend(optional_add_translations(
+        add_rows, added_ids = optional_add_translations(
             entry, args.add_dbs, args.add_seqs, workdir,
             taken=set(resolution.final_ids.values()),
-        ))
+            stop_policy=args.internal_stops,
+        )
+        dedup_log_rows.extend(add_rows)
+
+    # Step 6.5: collect the per-job translation stats while the sidecars still
+    # exist (cleanup sweeps the run root) and label every record with the
+    # identifier it ended up carrying in the tree.
+    translation_rows: List[Dict[str, object]] = []
+    if blast_type == "tblastn":
+        final_ids = dict(resolution.final_ids)
+        final_ids.update(added_ids)
+        translation_rows = translation.build_log_rows(
+            translation.read_sidecars(entry_dir.glob(f"*{translation.SIDECAR_SUFFIX}")),
+            final_ids, resolution.dropped,
+        )
 
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
@@ -1961,6 +2047,14 @@ def main():
         hdr_rules_by_db=hdr_rules_by_db, mode=args.duplicates,
     )
 
+    # Same placement, same reason: after cleanup so it is not swept out of the
+    # run root, before archiving so it travels with the PDFs.
+    if translation_rows:
+        translation.write_log(
+            entry_dir / TRANSLATION_REPORT_NAME, translation_rows,
+            entry=entry, policy=args.internal_stops, blast_type=blast_type,
+        )
+
     # Step 10: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_dir = archive_run(entry_dir, timestamp)
@@ -1971,6 +2065,9 @@ def main():
     print_collision_report(resolution.collisions, resolution,
                            run_dir / DEDUP_LOG_NAME, args.duplicates)
     print_query_overlap(identifiers.query_overlaps(hit_index), args.queries)
+    if translation_rows:
+        translation.print_report(translation_rows, args.internal_stops,
+                                 run_dir / TRANSLATION_REPORT_NAME)
     print()
     print(f"  Alignment: {run_dir / RUN_ASSETS_DIRNAME / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / RUN_ASSETS_DIRNAME / 'combinedtree.nwk'}")

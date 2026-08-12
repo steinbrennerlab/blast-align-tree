@@ -151,6 +151,7 @@ def build_index(
     blast_type: str,
     bt: str,
     db_label_fn,
+    ranking_lengths: Optional[Dict[Tuple[str, str], int]] = None,
 ) -> List[RecordRef]:
     """
     Read every (query, db) pre-parse FASTA and recompute the parsed identifier
@@ -159,6 +160,14 @@ def build_index(
     The parsed FASTAs written during the BLAST loop keep only the token, so the
     source ID and original description have to be recovered here - that pairing
     is the whole basis for telling a real collision from benign overlap.
+
+    `ranking_lengths` maps (db, source_id) -> the amino-acid length to rank by.
+    It exists because the internal-stop policy changes how long a translated hit
+    is: under truncation a pseudogene's protein ends at its first stop, and
+    ranking on that length would let an intact isoform silently supersede the
+    very record a pseudogene claim rests on. Supplying the stop-independent
+    length keeps collision outcomes identical under every policy. Falls back to
+    the sequence length in the file when absent.
     """
     index: List[RecordRef] = []
     for db in databases:
@@ -170,12 +179,15 @@ def build_index(
                 continue
             for rec in SeqIO.parse(str(fp), "fasta"):
                 token = parse_header_token(rec.description, headerword, rec.id, suffix)
+                aa_len = len(rec.seq)
+                if ranking_lengths is not None:
+                    aa_len = ranking_lengths.get((db, rec.id), aa_len)
                 index.append(RecordRef(
                     query=query,
                     db=db,
                     source_id=rec.id,
                     description=rec.description,
-                    aa_len=len(rec.seq),
+                    aa_len=aa_len,
                     token=token,
                 ))
     return index
