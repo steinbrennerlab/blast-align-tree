@@ -447,7 +447,7 @@ confirmation before anything is merged:
     AT2G13800  <- keep AT2G13800.1 (601 aa)
         drop AT2G13800.3 (601 aa)
         drop AT2G13800.2 (484 aa)
-        Deduplicate these 6 identifier(s) for 'AT1G71830.1'? [Y/n]
+        Deduplicate these 6 identifier(s) for 'AT1G71830.1'? [Y/n] (10s -> Y)
 ```
 
 Answering `n` keeps every record instead, disambiguated as
@@ -455,11 +455,20 @@ Answering `n` keeps every record instead, disambiguated as
 `--datasets` tables keyed on the bare identifier, which is the trade-off
 for retaining all isoforms.
 
+Each prompt waits 10 seconds and then takes its default, so a long run
+left unattended finishes rather than stalling at the question. Prompts
+that timed out are named in the end-of-run summary and in the
+`# unanswered prompts (default taken):` line of `deduplication_log.tsv`,
+so a default that was taken is never mistaken for one that was agreed
+to. Raise or lower the wait with `CONFIRM_TIMEOUT_SECONDS` in
+`blast_align_tree/cli.py`; use `--duplicates auto` to skip the prompts
+altogether.
+
 Use `--duplicates` to control this:
 
 | Value | Behaviour |
 | --- | --- |
-| `ask` (default) | Confirm each query's collisions. Falls back to `auto` when there is no terminal, so batch and HPC runs never block. |
+| `ask` (default) | Confirm each query's collisions, waiting 10 s per prompt before taking the default. Falls back to `auto` when there is no terminal, so batch and HPC runs never block. |
 | `auto` | Apply the rules without prompting and warn at the end. |
 | `fail` | Stop the run and list the collisions, so you can pick a more specific `-hdr` / `-hdr_sfx`. |
 

@@ -527,6 +527,7 @@ def write_log(
     blast_type: str,
     hdr_rules_by_db: Dict[str, Tuple[str, str]],
     mode: str,
+    unanswered: Sequence[str] = (),
 ) -> Path:
     """Write the de-duplication ledger as TSV with a self-describing header."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -536,6 +537,11 @@ def write_log(
         fh.write(f"# generated: {datetime.now().isoformat(timespec='seconds')}\n")
         fh.write(f"# blast_type: {blast_type}\n")
         fh.write(f"# duplicates mode: {mode}\n")
+        if unanswered:
+            # 'ask' alone would overstate what happened: these prompts timed out
+            # and took the default rather than being agreed to.
+            fh.write(f"# unanswered prompts (default taken): "
+                     f"{', '.join(unanswered)}\n")
         fh.write(f"# policy: isoform/duplicated locus -> longest amino-acid sequence retained "
                  f"(ties: lexicographically smallest source ID); "
                  f"identifier shared across databases -> genome tag appended, nothing dropped\n")

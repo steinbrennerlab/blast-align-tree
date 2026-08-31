@@ -36,6 +36,11 @@ the bundled `TAIR10cds.fa` share a locus identifier with another record.
   queries are merged — so genuine data loss is confirmed separately from the
   redundancy that merging queries is expected to produce. Answering `n` keeps
   every record, disambiguated as `AT2G13800__1`, `AT2G13800__2`, ….
+- **Prompts time out after 10 seconds** and take their default, so a run left
+  unattended finishes instead of blocking at the question. A default taken in
+  silence is not passed off as agreement: the unanswered queries are named in
+  the end-of-run summary and in a `# unanswered prompts (default taken):` line
+  in `deduplication_log.tsv`.
 - **New `--duplicates {ask,auto,fail}`.** Defaults to `ask`, falling back to
   `auto` when there is no terminal, so unattended and HPC runs never block.
   `fail` stops the run and lists the collisions.

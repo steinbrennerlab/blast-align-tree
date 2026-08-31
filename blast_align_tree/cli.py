@@ -22,10 +22,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-from typing import Dict, Iterable, List, Set, Tuple, Optional
+from typing import Dict, Iterable, List, Sequence, Set, Tuple, Optional
+import queue
 import re
 import shlex
 import tempfile
+import threading
 from datetime import datetime
 from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
@@ -39,6 +41,9 @@ RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
 RUN_COMMAND_NAME = "run_command.txt"
+# How long a collision prompt waits before taking its default answer,
+# so a run left unattended finishes instead of blocking overnight.
+CONFIRM_TIMEOUT_SECONDS = 10
 
 # Biopython
 try:
@@ -832,19 +837,72 @@ def translate_and_parse_headers(
 # Identifier reconciliation (step 3.5)
 # -----------------------
 
-def _prompt_yes(question: str) -> bool:
-    """Ask once; anything but an explicit 'n' accepts. EOF accepts."""
+_stdin_lines: "queue.Queue[Optional[str]]" = queue.Queue()
+_stdin_reader: Optional[threading.Thread] = None
+
+
+def _start_stdin_reader() -> None:
+    """Read stdin on a daemon thread so a prompt can give up waiting.
+
+    input() cannot be interrupted once it blocks, and select() does not accept
+    stdin on Windows, so one long-lived reader feeding a queue is the portable
+    way to put a clock on an answer.
+    """
+    global _stdin_reader
+    if _stdin_reader is not None:
+        return
+
+    def read_lines():
+        while True:
+            line = sys.stdin.readline()
+            _stdin_lines.put(line or None)   # readline() returns '' at EOF
+            if not line:
+                return
+
+    _stdin_reader = threading.Thread(target=read_lines, daemon=True)
+    _stdin_reader.start()
+
+
+def _prompt_yes(question: str, timeout: Optional[float] = None) -> Tuple[bool, bool]:
+    """Ask once, for at most *timeout* seconds.
+
+    Returns (accepted, answered). Anything but an explicit 'n' accepts; EOF and
+    silence accept too, but report answered=False so the run can record that the
+    default was taken rather than agreed to.
+
+    The default is read here rather than bound as an argument default, so
+    CONFIRM_TIMEOUT_SECONDS stays authoritative if it is changed.
+    """
+    timeout = CONFIRM_TIMEOUT_SECONDS if timeout is None else timeout
+    _start_stdin_reader()
+    # Discard anything typed before the question appeared, so a late answer to
+    # the previous query is never applied to this one.
+    while not _stdin_lines.empty():
+        try:
+            _stdin_lines.get_nowait()
+        except queue.Empty:
+            break
+
+    print(f"{question} [Y/n] ({timeout:.0f}s -> Y) ", end="", flush=True)
     try:
-        answer = input(f"{question} [Y/n] ").strip().lower()
-    except EOFError:
-        return True
-    return not answer.startswith("n")
+        answer = _stdin_lines.get(timeout=timeout)
+    except queue.Empty:
+        print()
+        print(f"        no answer in {timeout:.0f}s: deduplicating")
+        return True, False
+    if answer is None:                       # EOF
+        print()
+        return True, False
+    return not answer.strip().lower().startswith("n"), True
 
 
-def _confirm_collisions(collisions: List["identifiers.Collision"], mode: str) -> Set[Tuple[str, str]]:
+def _confirm_collisions(
+    collisions: List["identifiers.Collision"], mode: str,
+) -> Tuple[Set[Tuple[str, str]], List[str]]:
     """
     Review identifier collisions per query, before results from several queries
-    are merged. Returns the (db, token) pairs the user refused to deduplicate.
+    are merged. Returns the (db, token) pairs the user refused to deduplicate,
+    and the queries whose prompt went unanswered and took the default.
     """
     lossy = [c for c in collisions if c.kind != identifiers.CROSS_DATABASE]
     grouped = identifiers.collisions_by_query(collisions)
@@ -863,12 +921,13 @@ def _confirm_collisions(collisions: List["identifiers.Collision"], mode: str) ->
 
     interactive = mode == "ask" and sys.stdin is not None and sys.stdin.isatty()
     declined: Set[Tuple[str, str]] = set()
+    unanswered: List[str] = []
 
     if not interactive:
         if lossy:
             print(f"  [ids] {len(lossy)} identifier collision(s) resolved automatically "
                   f"(longest amino-acid sequence retained)")
-        return declined
+        return declined, unanswered
 
     for query in sorted(grouped):
         cols = grouped[query]
@@ -877,11 +936,15 @@ def _confirm_collisions(collisions: List["identifiers.Collision"], mode: str) ->
             print(line)
         print("        Answering 'n' keeps every record instead, disambiguated with __1/__2 suffixes")
         print("        (suffixed labels will not join to --datasets tables keyed on the bare identifier).")
-        if not _prompt_yes(f"        Deduplicate these {len(cols)} identifier(s) for '{query}'?"):
+        accepted, answered = _prompt_yes(
+            f"        Deduplicate these {len(cols)} identifier(s) for '{query}'?")
+        if not answered:
+            unanswered.append(query)
+        if not accepted:
             declined.update((c.db, c.token) for c in cols)
             print(f"        keeping all records for '{query}'")
 
-    return declined
+    return declined, unanswered
 
 
 def _ranking_lengths(entry_dir: Path) -> Dict[Tuple[str, str], int]:
@@ -913,7 +976,7 @@ def reconcile_identifiers(
     than one source record, confirm the losses, then rewrite the parsed FASTAs and
     coding tables so a single resolved identifier flows into every later step.
 
-    Returns (index, resolution, log_rows).
+    Returns (index, resolution, log_rows, unanswered_queries).
     """
     entry_dir = workdir / entry
     bt = bt_suffix(blast_type)
@@ -922,12 +985,12 @@ def reconcile_identifiers(
                                     blast_type, bt, db_label,
                                     ranking_lengths=_ranking_lengths(entry_dir))
     collisions = identifiers.detect(index)
-    declined = _confirm_collisions(collisions, mode)
+    declined, unanswered = _confirm_collisions(collisions, mode)
     res = identifiers.resolve(index, collisions, declined)
 
     _apply_identifiers(entry, queries, databases, hdr_rules_by_db, workdir, blast_type, res)
 
-    return index, res, identifiers.build_log_rows(index, res)
+    return index, res, identifiers.build_log_rows(index, res), unanswered
 
 
 def _apply_identifiers(
@@ -973,7 +1036,8 @@ def _apply_identifiers(
             _coding_table(aa, coding, hdr, db, sfx, id_map=id_map)
 
 
-def print_collision_report(collisions, res, log_path: Optional[Path], mode: str):
+def print_collision_report(collisions, res, log_path: Optional[Path], mode: str,
+                           unanswered: Sequence[str] = ()):
     """End-of-run account of every identifier that was contested."""
     counts = identifiers.summarize(collisions, res)
     total = counts[identifiers.ISOFORM] + counts[identifiers.CROSS_QUERY] + counts[identifiers.CROSS_DATABASE]
@@ -996,6 +1060,9 @@ def print_collision_report(collisions, res, log_path: Optional[Path], mode: str)
               f"(suffixed __1/__2 instead of deduplicated)")
     if mode != "ask" and counts["records_dropped"]:
         print(f"    [warn] resolved without confirmation (--duplicates {mode})")
+    if unanswered:
+        print(f"    [warn] {len(unanswered)} prompt(s) unanswered after "
+              f"{CONFIRM_TIMEOUT_SECONDS}s, default taken: {', '.join(unanswered)}")
     if log_path is not None:
         print(f"    Full record-level log: {log_path}")
 
@@ -1901,7 +1968,7 @@ def main():
     # Runs before any merge so collisions that discard records are confirmed
     # separately from the redundancy that merging queries is expected to produce.
     print(f"\n→ Checking parsed identifiers")
-    hit_index, resolution, dedup_log_rows = reconcile_identifiers(
+    hit_index, resolution, dedup_log_rows, unanswered = reconcile_identifiers(
         entry, args.queries, args.database, hdr_rules_by_db,
         workdir, blast_type, args.duplicates,
     )
@@ -2065,6 +2132,7 @@ def main():
         entry_dir / DEDUP_LOG_NAME, dedup_log_rows,
         entry=entry, blast_type=blast_type,
         hdr_rules_by_db=hdr_rules_by_db, mode=args.duplicates,
+        unanswered=unanswered,
     )
 
     # Same placement, same reason: the run command travels with the outputs it
@@ -2087,7 +2155,8 @@ def main():
     print(f"  Done.")
     print(f"{'='*50}")
     print_collision_report(resolution.collisions, resolution,
-                           run_dir / DEDUP_LOG_NAME, args.duplicates)
+                           run_dir / DEDUP_LOG_NAME, args.duplicates,
+                           unanswered=unanswered)
     print_query_overlap(identifiers.query_overlaps(hit_index), args.queries)
     if translation_rows:
         translation.print_report(translation_rows, args.internal_stops,
