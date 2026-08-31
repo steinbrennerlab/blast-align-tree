@@ -24,6 +24,7 @@ import subprocess
 import sys
 from typing import Dict, Iterable, List, Set, Tuple, Optional
 import re
+import shlex
 import tempfile
 from datetime import datetime
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
+RUN_COMMAND_NAME = "run_command.txt"
 
 # Biopython
 try:
@@ -377,6 +379,24 @@ def _move_top_level_run_assets(entry_dir: Path, assets_dir: Path) -> int:
             moved += 1
 
     return moved
+
+
+def write_run_command(path: Path, entry: str, blast_type: str) -> None:
+    """Record the invocation that produced this run, so it can be re-run later.
+
+    Taken from sys.argv rather than re-assembled from the parsed arguments: the
+    value of this file is that it is what was actually typed, not a rendering of
+    argparse defaults that may drift from it.
+    """
+    header = [
+        "# blast-align-tree run command",
+        f"# entry: {entry}",
+        f"# generated: {datetime.now().isoformat(timespec='seconds')}",
+        f"# blast_type: {blast_type}",
+        f"# working directory: {Path.cwd()}",
+    ]
+    command = shlex.join(["blast-align-tree", *sys.argv[1:]])
+    path.write_text("\n".join(header + [command, ""]), encoding="utf-8")
 
 
 def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases: List[str], blast_type: str):
@@ -2047,6 +2067,10 @@ def main():
         hdr_rules_by_db=hdr_rules_by_db, mode=args.duplicates,
     )
 
+    # Same placement, same reason: the run command travels with the outputs it
+    # produced, so an archived run can be reproduced without guesswork.
+    write_run_command(entry_dir / RUN_COMMAND_NAME, entry, blast_type)
+
     # Same placement, same reason: after cleanup so it is not swept out of the
     # run root, before archiving so it travels with the PDFs.
     if translation_rows:
@@ -2074,6 +2098,7 @@ def main():
     print(f"  Mapping:   {run_dir / RUN_ASSETS_DIRNAME / 'merged_genome_mapping.txt'}")
     print(f"  PDFs:      {run_dir}")
     print(f"  Run assets: {run_dir / RUN_ASSETS_DIRNAME}")
+    print(f"  Command:   {run_dir / RUN_COMMAND_NAME}")
     subdir = f"runs/{timestamp}"
     write_arg = args.queries[0]
     print(f"\n  To re-draw trees (e.g. with a subnode):")

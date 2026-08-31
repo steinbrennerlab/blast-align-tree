@@ -148,3 +148,41 @@ content is needed.
 - New `tests/test_translation.py` covering the policy, the flags, the register
   property, and legacy equivalence
 
+
+## Part 3 — Runs record the command that made them
+
+Until now an archived run in `ENTRY/runs/<timestamp>/` held its PDFs, trees and
+logs but no record of how it was produced. `-n`, the aligner, the tree builder
+and `-add` leave no trace in any output file, so a run from three weeks ago
+could not be reproduced or even described without the shell history that
+launched it.
+
+- **New `run_command.txt` in every run.** Written from `sys.argv` at archive
+  time — what was actually typed, not a re-rendering of argparse defaults — and
+  reported in the end-of-run summary beside the alignment, tree and PDFs.
+- **The BAT Genome Selector's Recent Runs tab reads it.** Selecting a run shows
+  its queries, its databases with the `-n` used for each, its BLAST type,
+  aligner and tree builder (marking the ones left at their defaults), plus
+  extras such as `-add`, `--motif`, `--hmm` and `--datasets`.
+- **Two copy buttons per run row.** `Re-run` copies the original command;
+  `Re-draw` copies the `Rscript … visualize_tree.r … -n <NODE>` hint the
+  pipeline prints when it finishes, carrying `--datasets` over from the
+  original run. `Re-run` is disabled, with a tooltip, for runs that have no
+  recorded command.
+- **The tab also summarizes the run itself**: tips in the combined tree broken
+  down per genome, de-duplication and translation log counts, output PDFs, and
+  the basenames of any re-draws already made.
+
+Runs archived before this release have no `run_command.txt`; the tab says so
+and disables that copy rather than reconstructing a partial command from the
+logs, which would silently omit `-n` and `-add` and so produce a different tree.
+
+### Full changelog
+
+- `cli.py`: `write_run_command()`; `RUN_COMMAND_NAME`; the file is written
+  beside `deduplication_log.tsv` and listed in the end-of-run summary
+- `genome_selector.py`: `read_run_command()`, `command_flags()`,
+  `describe_command()`, `tree_stats()`, `log_stats()`, `redraw_names()`,
+  `redraw_command()`, `format_timestamp()`; Recent Runs gains a details panel
+  with per-row "Details" selection
+- New `tests/test_run_details.py` covering the round trip and each summary

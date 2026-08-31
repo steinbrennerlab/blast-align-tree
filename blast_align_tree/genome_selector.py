@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import platform
+import shlex
 import shutil
 import random
 import re
@@ -17,9 +18,29 @@ import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 from pathlib import Path
+from importlib.resources import files as _pkg_files
 
 
 PROJ_DIR = Path.cwd()
+# The tree-drawing R script, resolved the same way cli.py resolves it, so the
+# re-draw hint below matches the one the pipeline prints when it finishes.
+VISUALIZE_TREE_R = Path(str(_pkg_files("blast_align_tree") / "data" / "visualize_tree.r"))
+# Files the pipeline leaves in an archived run. Names mirror cli.py; they are
+# repeated rather than imported so the GUI stays free of the pipeline's
+# Biopython/R dependencies.
+RUN_COMMAND_NAME = "run_command.txt"
+DEDUP_LOG_NAME = "deduplication_log.tsv"
+TRANSLATION_REPORT_NAME = "translation_report.tsv"
+RUN_ASSETS_DIRNAME = "genes_alignments_trees"
+MAPPING_NAME = "merged_genome_mapping.txt"
+COMBINED_TREE_NAME = "combinedtree.nwk"
+# Pipeline defaults, so run details can say which options were left alone.
+CLI_DEFAULTS = {"--blast_type": "tblastn", "--aligner": "clustalo",
+                "--tree_builder": "FastTree"}
+# The notebook only gets the height the panels above it leave over, so the
+# Recent Runs tab asks for a modest share and scrolls within it.
+RUNS_LIST_HEIGHT = 120
+DETAILS_MAX_LINES = 12
 GENOMES_DIR = PROJ_DIR / "genomes"
 SETTINGS_FILE = PROJ_DIR / ".bat_selector_settings.json"
 SETTINGS_VERSION = 1
@@ -249,6 +270,189 @@ def scan_recent_runs(limit: int = 20) -> list[tuple[str, str, Path]]:
     return results[:limit]
 
 
+def redraw_command(entry: str, timestamp: str, datasets: str | None = None) -> str:
+    """Return the Rscript command that re-draws the trees of an archived run.
+
+    Mirrors the "To re-draw trees" hint the pipeline prints when it finishes.
+    The entry doubles as the -b basename because cli.py takes both from the
+    first query; <NODE> is left as a placeholder for the user.
+    """
+    cmd = (f'Rscript "{VISUALIZE_TREE_R}" -e {entry} -b {entry}_redraw '
+           f'--subdir "runs/{timestamp}" -n <NODE>')
+    if datasets:
+        cmd += f' --datasets "{datasets}"'
+    return cmd
+
+
+def format_timestamp(timestamp: str) -> str:
+    """20260131_0814 -> 2026-01-31 08:14; unrecognized names pass through."""
+    if len(timestamp) >= 13 and "_" in timestamp:
+        return (f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]}"
+                f" {timestamp[9:11]}:{timestamp[11:13]}")
+    return timestamp
+
+
+def read_run_command(run_dir: Path) -> str | None:
+    """Return the invocation recorded for a run, or None if it has none.
+
+    Runs archived before the pipeline started recording commands have no such
+    file, and nothing on disk records -n, the aligner, or -add, so there is
+    nothing to fall back on.
+    """
+    try:
+        text = (run_dir / RUN_COMMAND_NAME).read_text(encoding="utf-8",
+                                                      errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line
+    return None
+
+
+def _is_flag(token: str) -> bool:
+    return len(token) > 1 and token[0] == "-" and (token[1].isalpha() or token[1] == "-")
+
+
+def command_flags(command: str) -> dict[str, list[str]]:
+    """Group a recorded command into {flag: [values]}.
+
+    posix=False so Windows paths keep their backslashes; the quotes it leaves
+    attached are stripped by hand.
+    """
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        return {}
+    flags: dict[str, list[str]] = {}
+    current = None
+    for token in tokens[1:]:  # tokens[0] is the program name
+        token = token.strip("\"'")
+        if _is_flag(token):
+            current = token
+            flags.setdefault(current, [])
+        elif current is not None:
+            flags[current].append(token)
+    return flags
+
+
+def _flag_values(flags: dict[str, list[str]], *names: str) -> list[str]:
+    """Values for the first of *names* present (flags have short and long forms)."""
+    for name in names:
+        if name in flags:
+            return flags[name]
+    return []
+
+
+def describe_command(command: str) -> list[str]:
+    """Summarize the parameters of a recorded run command."""
+    flags = command_flags(command)
+    lines = []
+
+    queries = _flag_values(flags, "-q", "--queries")
+    if queries:
+        lines.append("Queries:   " + ", ".join(queries))
+
+    dbs = _flag_values(flags, "-dbs", "--database")
+    ns = _flag_values(flags, "-n", "--seqs")
+    if dbs:
+        labelled = [f"{db} (-n {ns[i]})" if i < len(ns) else db
+                    for i, db in enumerate(dbs)]
+        lines.append("Databases: " + ", ".join(labelled))
+
+    opts = []
+    for flag in ("--blast_type", "--aligner", "--tree_builder"):
+        values = _flag_values(flags, flag)
+        opts.append(values[0] if values else f"{CLI_DEFAULTS[flag]} (default)")
+    lines.append("Options:   " + ", ".join(opts))
+
+    extras = []
+    for flag, label in (("-add", "added seqs"), ("--motif", "motifs"),
+                        ("--hmm", "HMMs"), ("-aa", "slice"),
+                        ("--datasets", "datasets")):
+        values = _flag_values(flags, flag)
+        if values:
+            extras.append(f"{label}: {' '.join(values)}")
+    if extras:
+        lines.append("Extras:    " + "; ".join(extras))
+    return lines
+
+
+def tree_stats(run_dir: Path) -> str:
+    """Describe the combined tree: tip count, and how many tips per genome."""
+    assets = run_dir / RUN_ASSETS_DIRNAME
+    try:
+        newick = (assets / COMBINED_TREE_NAME).read_text(encoding="utf-8",
+                                                         errors="replace")
+    except OSError:
+        return ""
+    # Tip labels follow '(' or ','; internal nodes carry support values, which
+    # follow ')' instead and so are never captured.
+    tips = [t.strip() for t in re.findall(r"[(,]\s*([^(),:;]+)", newick)]
+    if not tips:
+        return ""
+
+    genomes: dict[str, str] = {}
+    try:
+        for line in (assets / MAPPING_NAME).read_text(
+                encoding="utf-8", errors="replace").splitlines()[1:]:
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                genomes[parts[0]] = parts[1]
+    except OSError:
+        pass
+
+    counts: dict[str, int] = {}
+    for tip in tips:
+        counts[genomes.get(tip, "unmapped")] = counts.get(genomes.get(tip, "unmapped"), 0) + 1
+    breakdown = ", ".join(f"{g} {c}" for g, c in
+                          sorted(counts.items(), key=lambda kv: -kv[1]))
+    return f"{len(tips)} tips — {breakdown}"
+
+
+def _data_rows(path: Path) -> list[list[str]]:
+    """Rows of a pipeline TSV log, without its '#' preamble or header line."""
+    try:
+        lines = [ln for ln in path.read_text(encoding="utf-8",
+                                             errors="replace").splitlines()
+                 if ln.strip() and not ln.startswith("#")]
+    except OSError:
+        return []
+    return [ln.split("\t") for ln in lines[1:]] if len(lines) > 1 else []
+
+
+def log_stats(run_dir: Path) -> list[str]:
+    """Summarize the de-duplication and translation logs, when present."""
+    lines = []
+
+    dedup = _data_rows(run_dir / DEDUP_LOG_NAME)
+    if dedup:
+        actions: dict[str, int] = {}
+        for row in dedup:
+            if len(row) > 4:
+                actions[row[4]] = actions.get(row[4], 0) + 1
+        summary = ", ".join(f"{c} {a}" for a, c in sorted(actions.items()))
+        lines.append(f"De-dup:    {len(dedup)} entries — {summary}")
+
+    report_path = run_dir / TRANSLATION_REPORT_NAME
+    translated = _data_rows(report_path)
+    if translated:
+        stops = 0
+        try:
+            header = [ln for ln in report_path.read_text(
+                encoding="utf-8", errors="replace").splitlines()
+                if ln.strip() and not ln.startswith("#")][0].split("\t")
+            col = header.index("n_internal_stops")
+            stops = sum(1 for row in translated
+                        if len(row) > col and row[col].strip() not in ("", "0"))
+        except (OSError, ValueError, IndexError):
+            pass
+        lines.append(f"Translated: {len(translated)} sequences — "
+                     f"{stops} with internal stops")
+    return lines
+
+
 def _is_wsl() -> bool:
     """Detect if running inside WSL."""
     try:
@@ -276,6 +480,21 @@ def open_folder(path: Path):
             subprocess.Popen(["explorer.exe", win_path])
         elif shutil.which("xdg-open"):
             subprocess.Popen(["xdg-open", str(path)])
+
+
+def redraw_names(run_dir: Path, entry: str) -> list[str]:
+    """Basenames of extra tree renders in a run, e.g. ENTRY_redraw_XI."""
+    names = set()
+    try:
+        for f in run_dir.glob("*.pdf"):
+            base = f.name[:-len(".pdf")]
+            # Skip the derived companions (ENTRY.pdf.MSA.pdf and friends).
+            if ".pdf" in base or base == entry:
+                continue
+            names.add(base)
+    except OSError:
+        pass
+    return sorted(names)
 
 
 class ToolTip:
@@ -312,7 +531,9 @@ class GenomeSelectorApp:
                  restore: bool = True):
         self.root = root
         root.title("BAT Genome Selector")
-        root.minsize(1050, 600)
+        # Tall enough that the genome table and the Recent Runs details
+        # panel are both usable; below this one of them collapses.
+        root.minsize(1050, 800)
 
         self.default_n = DEFAULT_N if default_n is None else default_n
         self._default_n_from_cli = default_n is not None
@@ -323,12 +544,16 @@ class GenomeSelectorApp:
         self.row_tokens: dict[str, list[str]] = {}
 
         self._build_banner()
+        # Before the genome table on purpose: pack hands out height in the order
+        # widgets are packed, and clips whatever is packed last. The genome list
+        # scrolls, so it can absorb a short window; the run details panel cannot,
+        # and used to be squeezed to nothing.
+        self._build_output_panel()
         self._build_genome_table()
         self._build_controls()
         self._build_options_panel()
         self._build_advanced_panel()
         self._build_action_buttons()
-        self._build_output_panel()
 
         # Everything above is the state this launcher starts in — command-line
         # options included. "Reset All" restores exactly this.
@@ -652,7 +877,8 @@ class GenomeSelectorApp:
     # ------------------------------------------------------------------
     def _build_output_panel(self):
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.notebook.pack(side="bottom", fill="both", expand=True,
+                           padx=8, pady=(0, 8))
 
         # Command tab
         cmd_frame = tk.Frame(self.notebook)
@@ -674,11 +900,17 @@ class GenomeSelectorApp:
         toolbar.pack(fill="x", pady=(4, 2), padx=4)
         ttk.Button(toolbar, text="Refresh", command=self._refresh_runs).pack(side="left")
 
+        # Packed before the list: the list canvas expands, so anything packed
+        # after it is squeezed out of the tab entirely.
+        details = self._build_details_panel(runs_frame)
+        details.pack(side="bottom", fill="x", padx=4, pady=(0, 6))
+
         # Scrollable list
         list_frame = tk.Frame(runs_frame)
-        list_frame.pack(fill="both", expand=True, padx=4, pady=(0, 4))
+        list_frame.pack(side="top", fill="both", expand=True, padx=4, pady=(0, 4))
 
-        self.runs_canvas = tk.Canvas(list_frame, highlightthickness=0)
+        self.runs_canvas = tk.Canvas(list_frame, highlightthickness=0,
+                                     height=RUNS_LIST_HEIGHT)
         runs_scroll = ttk.Scrollbar(list_frame, orient="vertical",
                                     command=self.runs_canvas.yview)
         self.runs_inner = tk.Frame(self.runs_canvas)
@@ -693,6 +925,33 @@ class GenomeSelectorApp:
         self.notebook.add(runs_frame, text="Recent Runs")
         self._refresh_runs()
 
+    def _build_details_panel(self, parent) -> tk.LabelFrame:
+        """Details for the selected run: what it was built from, what came out,
+        the command that produced it, and the hint for re-drawing its trees
+        (the same one the pipeline prints when it finishes). Defaults to the
+        newest run; any row's buttons swap in that run and copy from it.
+
+        One read-only text rather than a stack of boxes: the notebook only gets
+        the height the panels above it leave over, and every line spent here is
+        a run the list cannot show.
+        """
+        details = tk.LabelFrame(parent, text="Run details",
+                                font=("TkDefaultFont", 9, "bold"))
+
+        self.runs_info = tk.Text(details, height=DETAILS_MAX_LINES, wrap="none",
+                                 font=("Courier", 9), relief="flat",
+                                 background=self.root.cget("background"))
+        self.runs_info.bind("<Key>", lambda e: "break" if e.keysym not in
+                            ("c", "a") or not (e.state & 0x4) else None)
+        # Commands run past the window; scroll rather than wrap, so the aligned
+        # detail lines above them stay aligned.
+        info_scroll = ttk.Scrollbar(details, orient="horizontal",
+                                    command=self.runs_info.xview)
+        self.runs_info.configure(xscrollcommand=info_scroll.set)
+        self.runs_info.pack(fill="x", padx=4, pady=(2, 0))
+        info_scroll.pack(fill="x", padx=4, pady=(0, 4))
+        return details
+
     def _refresh_runs(self):
         """Populate the Recent Runs list."""
         for widget in self.runs_inner.winfo_children():
@@ -703,23 +962,17 @@ class GenomeSelectorApp:
             tk.Label(self.runs_inner, text="No runs found.",
                      font=("TkDefaultFont", 9), fg="gray").grid(
                 row=0, column=0, padx=8, pady=8)
+            self._show_run(None)
             return
 
         # Column headers
-        for col, text in enumerate(["Entry", "Timestamp", "Contents", ""]):
+        for col, text in enumerate(["Entry", "Timestamp", "Contents", "", "", "", ""]):
             tk.Label(self.runs_inner, text=text,
                      font=("TkDefaultFont", 9, "bold")).grid(
                 row=0, column=col, padx=6, pady=(4, 2), sticky="w")
 
         for i, (entry, timestamp, path) in enumerate(runs, start=1):
-            # Format timestamp: 20260131_0814 -> 2026-01-31 08:14
-            display_ts = timestamp
-            if len(timestamp) >= 13 and "_" in timestamp:
-                try:
-                    display_ts = (f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]}"
-                                  f" {timestamp[9:11]}:{timestamp[11:13]}")
-                except (IndexError, ValueError):
-                    pass
+            display_ts = format_timestamp(timestamp)
 
             tk.Label(self.runs_inner, text=entry, anchor="w").grid(
                 row=i, column=0, padx=6, pady=1, sticky="w")
@@ -735,6 +988,89 @@ class GenomeSelectorApp:
             ttk.Button(self.runs_inner, text="Open Run", width=11,
                        command=lambda p=path: open_folder(p)).grid(
                 row=i, column=3, padx=6, pady=1)
+
+            run = (entry, timestamp, path)
+            ttk.Button(self.runs_inner, text="Details", width=9,
+                       command=lambda r=run: self._show_run(r)).grid(
+                row=i, column=4, padx=(0, 4), pady=1)
+
+            # Copying selects the run too, so the panel always shows what was
+            # just put on the clipboard.
+            rerun = ttk.Button(
+                self.runs_inner, text="Re-run", width=9,
+                command=lambda r=run: self._copy_for_run(r, "run_command"))
+            rerun.grid(row=i, column=5, padx=(0, 4), pady=1)
+            if read_run_command(path) is None:
+                # Nothing to copy: this run predates command logging.
+                rerun.state(["disabled"])
+                ToolTip(rerun, "This run was archived before blast-align-tree "
+                               "started saving its command")
+
+            redraw = ttk.Button(
+                self.runs_inner, text="Re-draw", width=9,
+                command=lambda r=run: self._copy_for_run(r, "redraw_cmd"))
+            redraw.grid(row=i, column=6, padx=(0, 6), pady=1)
+            ToolTip(redraw, "Copy the Rscript command that re-draws this run's "
+                            "trees, e.g. from a subnode")
+
+        self._show_run(runs[0])
+
+    def _copy_for_run(self, run: tuple[str, str, Path], which: str):
+        """Select a run, then copy one of its two commands."""
+        self._show_run(run)
+        self._copy(getattr(self, which))
+
+    def _show_run(self, run: tuple[str, str, Path] | None):
+        """Fill the details panel from a (entry, timestamp, path) run."""
+        if run is None:
+            self.run_command = None
+            self.redraw_cmd = None
+            self._set_text(self.runs_info, "")
+            return
+
+        entry, timestamp, path = run
+        command = read_run_command(path)
+        self.run_command = command
+        datasets = command_flags(command).get("--datasets") if command else None
+        self.redraw_cmd = redraw_command(entry, timestamp,
+                                         datasets[0] if datasets else None)
+
+        lines = [f"Run:       {entry}   {format_timestamp(timestamp)}"]
+        if command:
+            lines.extend(describe_command(command))
+        else:
+            lines.append("Params:    not recorded (run predates command logging)")
+        tree = tree_stats(path)
+        if tree:
+            lines.append(f"Tree:      {tree}")
+        lines.extend(log_stats(path))
+        outputs = self._summarize_run(path)
+        if outputs:
+            lines.append(f"Outputs:   {outputs}")
+        redraws = redraw_names(path, entry)
+        if redraws:
+            lines.append(f"Re-draws:  {', '.join(redraws)}")
+
+        lines.append("")
+        lines.append("Re-run:    " + (command or
+                     "not recorded — archived before blast-align-tree "
+                     "started saving its command"))
+        lines.append(f"Re-draw:   {self.redraw_cmd}")
+        self._set_text(self.runs_info, "\n".join(lines))
+        # Only as tall as it needs to be; the run list gets what is left.
+        self.runs_info.configure(height=min(len(lines), DETAILS_MAX_LINES))
+
+    @staticmethod
+    def _set_text(widget: tk.Text, text: str):
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text)
+
+    def _copy(self, text: str | None):
+        if text:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.root.update()
+
 
     @staticmethod
     def _summarize_run(path: Path) -> str:
