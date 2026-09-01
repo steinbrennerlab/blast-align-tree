@@ -191,3 +191,43 @@ logs, which would silently omit `-n` and `-add` and so produce a different tree.
   `redraw_command()`, `format_timestamp()`; Recent Runs gains a details panel
   with per-row "Details" selection
 - New `tests/test_run_details.py` covering the round trip and each summary
+
+## Part 4 — Rooting the tree on an outgroup from the pipeline
+
+`visualize_tree.r` has always had `-a/--reroot`, but the pipeline called it with
+only `--entry`/`--write`/`--datasets`, so a run that pulled an outgroup in with
+`-add`/`-add_db` still drew its first-pass PDFs unrooted; rooting them meant a
+second, manual `Rscript` pass. `blast-align-tree` now takes `-a/--reroot ID` and
+passes it straight through, so the PDFs a run produces come out already rooted.
+
+### Highlights
+
+- **`-a/--reroot ID` on the pipeline.** One tip, forwarded to
+  `visualize_tree.r --reroot`. Pairs with `-add`/`-add_db`, which is what puts
+  the outgroup in the tree in the first place.
+- **A mistyped ID no longer wastes the run.** The R script matches tip labels
+  exactly and errors out on no match — at the last step of a pipeline that may
+  have run for an hour. The ID is now checked against the tree first; if it is
+  not a tip, the run warns, draws the tree unrooted, and finishes, so the
+  alignment, tree, and PDFs all survive.
+- **The warning names the likely fix.** Tip labels are whatever `-hdr` parsing
+  leaves behind, so the usual mistake is an isoform suffix the labels do not
+  carry: `-a AT2G38240.1` answers with `Did you mean: AT2G38240?`.
+- **Carried into the redraw hint and the run summary.** The `Rscript …` command
+  printed at the end of the run repeats `-a`, and the Recent Runs details panel
+  lists the reroot alongside the other extras.
+- **In the selector too.** `bat-genome-selector` gains an `-a (reroot on)`
+  field on the Advanced panel's outgroup row, saved with the rest of the
+  settings. More than one tip is refused rather than silently truncated.
+
+### Full changelog
+
+- `cli.py`: `-a/--reroot` argument; `read_tip_labels()`, `resolve_reroot()`;
+  `visualize_tree()` gains a `reroot` parameter; the end-of-run redraw hint
+  repeats `-a`
+- `genome_selector.py`: `reroot_var` entry on the Advanced panel, persisted
+  via `GLOBAL_SETTING_VARS`, emitted by `_build_args()`; `describe_command()`
+  reports `reroot` in Extras, and now matches long flag forms (`--add_seqs`,
+  `--motifs`, `--hmms`, `--slice`) as well as short ones
+- New `tests/test_reroot.py` covering the tip lookup, the near-match warning,
+  and the flag's path into the Rscript command

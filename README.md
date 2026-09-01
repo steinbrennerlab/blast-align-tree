@@ -262,10 +262,11 @@ bat-genome-selector
   button.
 - **Options panel.** Aligner (Clustal Omega or MAFFT + mode), tree builder
   (FastTree or RAxML), BLAST type (tblastn/blastp), thread count.
-- **Advanced panel** (collapsible): outgroups (`-add`, `-add_db`), AA
-  slice (`-aa`, single range applied to all queries, or one range per
-  query — see the tutorial section below), motif patterns (regex or
-  PROSITE, overlap toggle), and HMM profiles (`--hmm`).
+- **Advanced panel** (collapsible): outgroups (`-add`, `-add_db`) and the
+  tip to root the tree on (`-a`), AA slice (`-aa`, single range applied to
+  all queries, or one range per query — see the tutorial section below),
+  motif patterns (regex or PROSITE, overlap toggle), and HMM profiles
+  (`--hmm`).
 - **Generate Command / Copy to Clipboard.** Produces a ready-to-paste
   `blast-align-tree …` command.
 - **Recent Runs tab.** Lists past `ENTRY/runs/TIMESTAMP/` directories in
@@ -363,7 +364,8 @@ pipeline prints a ready-to-edit `Rscript …` command at the end of each
 run; copy it and tweak options such as:
 
 - `-b <NAME>` — filename stem for the new PDFs
-- `-a <ID>` — reroot on this outgroup
+- `-a <ID>` — reroot on this outgroup (also available on the pipeline
+  itself as `blast-align-tree -a <ID>`, see below)
 - `-n <NODE>` — draw a subtree at this node (use `--help` for the full
   option list)
 - `-k 1` — show bootstraps
@@ -566,6 +568,24 @@ transcripts rather than CDS.
            4  SynthTranscripts.fa
        Check these databases before interpreting the affected proteins.
 ```
+
+### Rooting the tree on an outgroup with `-a`
+
+Outgroup handling is two steps: pull the sequence into the run with
+`-add`/`-add_db`, then root the tree on it with `-a`/`--reroot`. `-a`
+takes a single tip and is passed straight through to `visualize_tree.r`,
+so the first-pass PDFs come out already rooted — no redraw needed:
+
+```
+blast-align-tree -q AT2G19590.1 -qdbs TAIR10cds.fa                  -n 15 15 -dbs TAIR10cds.fa Vung469cds.fa                  -hdr gene: locus=                  -add AT2G38240 -add_db TAIR10cds.fa                  -a AT2G38240
+```
+
+The ID must match the **tip label** as it appears in the tree, which is
+whatever `-hdr` parsing leaves behind — `gene:` strips the isoform
+suffix, so the tip is `AT2G38240`, not `AT2G38240.1`. If the ID is not a
+tip, the run says so, suggests the near match, and draws the tree
+unrooted rather than failing at the last step; you can then reroot with
+the `Rscript …` redraw command printed at the end of the run.
 
 ### Slicing query amino-acid ranges with `-aa`
 

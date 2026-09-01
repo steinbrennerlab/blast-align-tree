@@ -1325,7 +1325,52 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
         tree_end = datetime.now()
         print(f"  Total tree build time: {tree_end - tree_start}")
 
-def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Optional[str] = None):
+def read_tip_labels(newick: Path) -> List[str]:
+    """Tip labels of a newick tree, in file order.
+
+    Tip labels follow '(' or ','; internal nodes carry support values, which
+    follow ')' instead and so are never captured.
+    """
+    try:
+        text = newick.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [t.strip() for t in re.findall(r"[(,]\s*([^(),:;]+)", text)]
+
+
+def resolve_reroot(reroot: str, entry_dir: Path) -> Optional[str]:
+    """Check that --reroot names a tip of the tree about to be drawn.
+
+    visualize_tree.r matches the tip label exactly and errors out when nothing
+    matches, which would throw away a whole pipeline run over a typo. Warn and
+    draw the tree unrooted instead, naming the candidates that look close.
+    """
+    # Same lookup order as visualize_tree.r: the run root during a pipeline
+    # run, the assets folder once the run has been cleaned up and archived.
+    tips = (read_tip_labels(entry_dir / "combinedtree.nwk")
+            or read_tip_labels(entry_dir / RUN_ASSETS_DIRNAME / "combinedtree.nwk"))
+    if not tips:
+        # No tree to check against; let the R script have the last word.
+        return reroot
+    if reroot in tips:
+        return reroot
+
+    # A trailing isoform suffix is the usual mismatch: -hdr strips it from the
+    # tip labels, so the ID the user knows the gene by is one character longer.
+    stem = reroot.split(".")[0].lower()
+    near = [t for t in tips if t.lower() == stem or t.split(".")[0].lower() == stem]
+    print(f"\n  WARNING: -a/--reroot {reroot!r} is not a tip of the tree; drawing it unrooted.")
+    if near:
+        print(f"           Did you mean: {', '.join(sorted(set(near)))}?")
+    else:
+        print(f"           Tip labels are the IDs left after -hdr parsing "
+              f"(e.g. {', '.join(tips[:3])}).")
+    print(f"           Reroot afterwards with the Rscript command printed below.")
+    return None
+
+
+def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Optional[str] = None,
+                   reroot: Optional[str] = None):
     """
     Run visualize-tree.r on the combinedtree.nwk
     By default, --write argument is set to the first query name.
@@ -1343,6 +1388,10 @@ def visualize_tree(entry: str, queries: List[str], workdir: Path, datasets: Opti
     ]
     if datasets:
         cmd.extend(["--datasets", datasets])
+    if reroot:
+        resolved = resolve_reroot(reroot, workdir / entry)
+        if resolved:
+            cmd.extend(["--reroot", resolved])
     run(cmd, cwd=workdir)
 
 # -----------------------
@@ -1851,6 +1900,10 @@ def main():
     ap.add_argument("-dbs", "--database", nargs="+", help="blast databases to search (filenames or subfolder paths under ./genomes)")
     ap.add_argument("-add", "--add_seqs", nargs="*", default=[], help="additional sequences (optional)")
     ap.add_argument("-add_db", "--add_dbs", nargs="*", default=[], help="databases for additional sequences (optional)")
+    ap.add_argument("-a", "--reroot", default=None, metavar="ID",
+                    help="reroot the tree on this tip (an outgroup added with -add/-add_db, "
+                         "or any hit). Must match the tip label as it appears in the tree, "
+                         "which is the ID after -hdr parsing (e.g. AT2G38240, not AT2G38240.1)")
     ap.add_argument(
         "-aa", "--slice", nargs="*", default=[],
         help=(
@@ -2119,7 +2172,7 @@ def main():
 
 
     # Step 8: run visualize-tree.r
-    visualize_tree(entry, args.queries, workdir, args.datasets)
+    visualize_tree(entry, args.queries, workdir, args.datasets, args.reroot)
 
     # Step 9: compact run-root outputs before archiving
     print(f"\n→ Cleaning run-root intermediates")
@@ -2177,6 +2230,8 @@ def main():
         f'  Rscript "{rscript_path}" -e {entry} -b {redraw_name} '
         f'--subdir "{subdir}" -n <NODE>'
     )
+    if args.reroot:
+        redraw_cmd += f' -a {args.reroot}'
     if args.datasets:
         redraw_cmd += f' --datasets "{args.datasets}"'
     print(redraw_cmd)

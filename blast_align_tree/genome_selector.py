@@ -56,6 +56,7 @@ GLOBAL_SETTING_VARS = {
     "threads": "threads_var",
     "add_seqs": "add_seqs_var",
     "add_dbs": "add_dbs_var",
+    "reroot": "reroot_var",
     "aa_start": "aa_start_var",
     "aa_end": "aa_end_var",
     "motif": "motif_var",
@@ -368,10 +369,13 @@ def describe_command(command: str) -> list[str]:
     lines.append("Options:   " + ", ".join(opts))
 
     extras = []
-    for flag, label in (("-add", "added seqs"), ("--motif", "motifs"),
-                        ("--hmm", "HMMs"), ("-aa", "slice"),
-                        ("--datasets", "datasets")):
-        values = _flag_values(flags, flag)
+    for names, label in ((("-add", "--add_seqs"), "added seqs"),
+                         (("-a", "--reroot"), "reroot"),
+                         (("--motif", "--motifs"), "motifs"),
+                         (("--hmm", "--hmms"), "HMMs"),
+                         (("-aa", "--slice"), "slice"),
+                         (("--datasets",), "datasets")):
+        values = _flag_values(flags, *names)
         if values:
             extras.append(f"{label}: {' '.join(values)}")
     if extras:
@@ -799,8 +803,16 @@ class GenomeSelectorApp:
 
         tk.Label(row1, text="-add_db (outgroup DBs):").pack(side="left")
         self.add_dbs_var = tk.StringVar()
-        ttk.Entry(row1, textvariable=self.add_dbs_var, width=30).pack(side="left", padx=(2, 0))
+        ttk.Entry(row1, textvariable=self.add_dbs_var, width=30).pack(side="left", padx=(2, 8))
         ToolTip(row1.winfo_children()[-1], "Space-separated FASTA files for outgroup sequences")
+
+        tk.Label(row1, text="-a (reroot on):").pack(side="left")
+        self.reroot_var = tk.StringVar()
+        ttk.Entry(row1, textvariable=self.reroot_var, width=18).pack(side="left", padx=(2, 0))
+        ToolTip(row1.winfo_children()[-1],
+                "One tip to root the tree on, usually an outgroup added above.\n"
+                "Use the ID as it appears in the tree, i.e. after -hdr parsing\n"
+                "(e.g. AT2G38240, not AT2G38240.1)")
 
         # Row 2: AA slice
         row2 = tk.Frame(self.adv_frame)
@@ -1501,6 +1513,14 @@ class GenomeSelectorApp:
         add_dbs = self.add_dbs_var.get().split()
         if add_dbs:
             parts.extend(["-add_db"] + add_dbs)
+
+        reroot = self.reroot_var.get().split()
+        if len(reroot) > 1:
+            self._set_output("Error: -a takes a single tip to root on, "
+                             f"got {len(reroot)}: {' '.join(reroot)}")
+            return None
+        if reroot:
+            parts.extend(["-a", reroot[0]])
 
         aa_start = self.aa_start_var.get().strip()
         aa_end = self.aa_end_var.get().strip()
