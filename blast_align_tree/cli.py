@@ -909,7 +909,7 @@ def _confirm_collisions(
 
     if not collisions:
         print("  [ids] no identifier collisions: every parsed identifier maps to one source record")
-        return set()
+        return set(), []
 
     if mode == "fail" and lossy:
         for line in identifiers.format_collision_lines(lossy, limit=25):

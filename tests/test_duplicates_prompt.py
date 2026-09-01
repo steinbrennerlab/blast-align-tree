@@ -127,3 +127,16 @@ def test_timeout_follows_the_constant_not_a_bound_default(monkeypatch):
     monkeypatch.setattr(cli, "CONFIRM_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr(cli.sys, "stdin", Stdin())
     assert cli._prompt_yes("Deduplicate?") == (True, False)
+
+
+@pytest.mark.parametrize("mode", ["ask", "auto", "fail"])
+def test_a_clean_run_returns_both_values(mode, capsys):
+    """
+    The no-collision path is the one most runs take, and it returned a bare
+    set() while the caller unpacked two values -- so every clean run died with
+    "not enough values to unpack" before reaching the alignment.
+    """
+    declined, unanswered = cli._confirm_collisions([], mode)
+    assert declined == set()
+    assert unanswered == []
+    assert "no identifier collisions" in capsys.readouterr().out
