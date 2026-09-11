@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="blast_align_tree/data/bat_logo.jpg" alt="BAT - blast-align-tree" width="640">
+</p>
+
 # blast-align-tree
 
 A pipeline to identify BLAST hits and perform phylogenetic analysis across
@@ -247,6 +251,8 @@ bat-genome-selector
 
 ### Key features
 
+- **Working directory.** Shows the current project path beneath the logo;
+  click it to open the folder in Explorer, Finder, or your Linux file manager.
 - **Auto-discovery.** Scans `./genomes/` (recursively) for `.fa`, `.faa`,
   `.fas`, `.fasta`, `.fna` files and ignores BLAST index sidecars.
 - **Header auto-detection.** Peeks at the first FASTA record in each

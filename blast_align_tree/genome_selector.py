@@ -20,6 +20,8 @@ from tkinter import messagebox, ttk
 from pathlib import Path
 from importlib.resources import files as _pkg_files
 
+from PIL import Image, ImageChops, ImageOps, ImageTk
+
 
 PROJ_DIR = Path.cwd()
 # The tree-drawing R script, resolved the same way cli.py resolves it, so the
@@ -582,27 +584,37 @@ class GenomeSelectorApp:
     # Banner
     # ------------------------------------------------------------------
     def _build_banner(self):
-        bat_col = 45
-        rows = [
-            ("        ,-- ATGCATGC  H. sapiens",       ""),
-            ("    ,---+",                              "     _.-~^~-._        /\\  /\\        _.-~^~-._"),
-            ("    |   `-- ATGCGTGC  D. melanogaster",  "   ,'         `-.____/    \\____.-'`         `,"),
-            (" ---+",                                  "  /                 B.A.T.                  \\"),
-            ("    |   ,-- ATGCATCC  A. thaliana",      "  \\__,           _,-~      ~-,_          ,__/"),
-            ("    `---+",                              "      `-.____.-'                `-.____.-'"),
-            ("        `-- ATGCGTCC  O. sativa",        ""),
-        ]
-        body = "\n".join(
-            (tree + " " * max(1, bat_col - len(tree)) + bat) if bat else tree
-            for tree, bat in rows
-        )
-        banner = (
-            "  B.A.T.  BLAST - ALIGN - TREE\n"
-            "  -------------------------------------------------------------------------------------\n"
-            + body
-        )
-        tk.Label(self.root, text=banner, font=("Courier", 9), justify="left",
-                 anchor="w", padx=12, pady=4).pack(fill="x")
+        logo_resource = _pkg_files("blast_align_tree") / "data" / "bat_logo.jpg"
+        with logo_resource.open("rb") as logo_file, Image.open(logo_file) as source:
+            logo = source.convert("RGB")
+        # Trim the generous white margins for display, keeping the bundled
+        # artwork unchanged. Ignore near-white JPEG compression artifacts.
+        background = Image.new("RGB", logo.size, "white")
+        ink = ImageChops.difference(logo, background).convert("L")
+        bounds = ink.point(lambda value: 255 if value > 30 else 0).getbbox()
+        if bounds:
+            logo = ImageOps.expand(logo.crop(bounds), border=16, fill="white")
+        logo.thumbnail((480, 112), Image.Resampling.LANCZOS)
+        # Tk needs a persistent reference or the image disappears after loading.
+        self.logo_image = ImageTk.PhotoImage(logo, master=self.root)
+        tk.Label(self.root, image=self.logo_image, background="white",
+                 anchor="w", padx=12, pady=8).pack(fill="x")
+
+        directory_row = tk.Frame(self.root)
+        directory_row.pack(fill="x", padx=12, pady=(4, 2))
+        tk.Label(directory_row, text="Working directory:",
+                 font=("TkDefaultFont", 9, "bold")).pack(side="left", anchor="n")
+        self.working_directory_link = tk.Button(
+            directory_row, text=str(PROJ_DIR), command=lambda: open_folder(PROJ_DIR),
+            font=("TkDefaultFont", 9, "underline"), foreground="#0066cc",
+            cursor="hand2", relief="flat", borderwidth=0, padx=4, pady=0,
+            anchor="w", justify="left", wraplength=850, takefocus=True)
+        self.working_directory_link.pack(side="left", fill="x", expand=True)
+        self.working_directory_link.bind(
+            "<Configure>", lambda event: self.working_directory_link.configure(
+                wraplength=max(100, event.width - 8)))
+        self.working_directory_link.bind(
+            "<Return>", lambda _event: self.working_directory_link.invoke())
 
         exts = "  ".join(sorted(FASTA_EXTENSIONS))
         summary = (
