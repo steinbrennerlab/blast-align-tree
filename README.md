@@ -355,6 +355,11 @@ for spotting large differences in domain architecture. Open the
 underlying FASTA files in `genes_alignments_trees/` to inspect the
 alignment in detail.
 
+All three PDF versions include a branch-length scale bar labeled in
+substitutions/site by default, sized to the displayed tree (including
+subtrees). Trees without branch lengths or with a zero branch-length span
+omit the scale bar.
+
 ![](images/ACO-tree-2.png)
 
 ### Redraw the ACC Oxidase tree
