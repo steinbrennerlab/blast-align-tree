@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="blast_align_tree/data/bat_logo.jpg" alt="BAT - blast-align-tree" width="640">
+</p>
+
 # blast-align-tree
 
 A pipeline to identify BLAST hits and perform phylogenetic analysis across
@@ -247,6 +251,8 @@ bat-genome-selector
 
 ### Key features
 
+- **Working directory.** Shows the current project path beneath the logo;
+  click it to open the folder in Explorer, Finder, or your Linux file manager.
 - **Auto-discovery.** Scans `./genomes/` (recursively) for `.fa`, `.faa`,
   `.fas`, `.fasta`, `.fna` files and ignores BLAST index sidecars.
 - **Header auto-detection.** Peeks at the first FASTA record in each
@@ -262,10 +268,11 @@ bat-genome-selector
   button.
 - **Options panel.** Aligner (Clustal Omega or MAFFT + mode), tree builder
   (FastTree or RAxML), BLAST type (tblastn/blastp), thread count.
-- **Advanced panel** (collapsible): outgroups (`-add`, `-add_db`), AA
-  slice (`-aa`, single range applied to all queries, or one range per
-  query — see the tutorial section below), motif patterns (regex or
-  PROSITE, overlap toggle), and HMM profiles (`--hmm`).
+- **Advanced panel** (collapsible): outgroups (`-add`, `-add_db`) and the
+  tip to root the tree on (`-a`), AA slice (`-aa`, single range applied to
+  all queries, or one range per query — see the tutorial section below),
+  motif patterns (regex or PROSITE, overlap toggle), and HMM profiles
+  (`--hmm`).
 - **Generate Command / Copy to Clipboard.** Produces a ready-to-paste
   `blast-align-tree …` command.
 - **Recent Runs tab.** Lists past `ENTRY/runs/TIMESTAMP/` directories in
@@ -354,6 +361,11 @@ for spotting large differences in domain architecture. Open the
 underlying FASTA files in `genes_alignments_trees/` to inspect the
 alignment in detail.
 
+All three PDF versions include a branch-length scale bar labeled in
+substitutions/site by default, sized to the displayed tree (including
+subtrees). Trees without branch lengths or with a zero branch-length span
+omit the scale bar.
+
 ![](images/ACO-tree-2.png)
 
 ### Redraw the ACC Oxidase tree
@@ -363,7 +375,8 @@ pipeline prints a ready-to-edit `Rscript …` command at the end of each
 run; copy it and tweak options such as:
 
 - `-b <NAME>` — filename stem for the new PDFs
-- `-a <ID>` — reroot on this outgroup
+- `-a <ID>` — reroot on this outgroup (also available on the pipeline
+  itself as `blast-align-tree -a <ID>`, see below)
 - `-n <NODE>` — draw a subtree at this node (use `--help` for the full
   option list)
 - `-k 1` — show bootstraps
@@ -414,6 +427,176 @@ blast-align-tree -q AT5G45250.1 Phvul.007G077500.1 AT5G17890.1 \
                  -dbs TAIR10cds.fa Vung469cds.fa \
                  -hdr gene: locus=
 ```
+
+### Identifier collisions and de-duplication
+
+`-hdr` turns a FASTA description into the short identifier used as a tree
+tip label, and that mapping is not one-to-one. `-hdr gene:` against
+TAIR10cds collapses `AT2G27490.1` and `AT2G27490.4` onto `AT2G27490`;
+10,690 of the 48,321 records in that database share a locus identifier
+with another record. Two genomes can also independently use the same
+gene symbol.
+
+The pipeline never resolves these silently. After the BLAST searches
+finish, but before results from several queries are merged, every
+identifier claimed by more than one source record is reported and
+resolved by an explicit rule:
+
+| Situation | What happens |
+| --- | --- |
+| Several isoforms or duplicated loci in one database share an identifier | The **longest amino-acid sequence** is retained; ties break on the lexicographically smallest source ID. The others are dropped and logged with the ID that replaced them. |
+| Two queries hit different records that share an identifier | Same rule, no separate prompt. |
+| Two **databases** use the same identifier | Both records are kept, each tagged with its genome (`RPS5_TAIR10cds`, `RPS5_NbLab360`). Nothing is dropped, so a genome can never vanish from the tree. |
+| The same record is hit by several queries | Not a collision. Counted as overlap and reported separately at the end of the run. |
+
+Note that the retained isoform is the longest one, which is not
+necessarily the isoform you passed as `-q`.
+
+With a terminal attached, each query's collisions are shown for
+confirmation before anything is merged:
+
+```
+  [ids] query 'AT1G71830.1': 6 identifier(s) claimed by more than one hit
+    AT2G13800  <- keep AT2G13800.1 (601 aa)
+        drop AT2G13800.3 (601 aa)
+        drop AT2G13800.2 (484 aa)
+        Deduplicate these 6 identifier(s) for 'AT1G71830.1'? [Y/n] (10s -> Y)
+```
+
+Answering `n` keeps every record instead, disambiguated as
+`AT2G13800__1`, `AT2G13800__2`, … Those suffixed labels will not join to
+`--datasets` tables keyed on the bare identifier, which is the trade-off
+for retaining all isoforms.
+
+Each prompt waits 10 seconds and then takes its default, so a long run
+left unattended finishes rather than stalling at the question. Prompts
+that timed out are named in the end-of-run summary and in the
+`# unanswered prompts (default taken):` line of `deduplication_log.tsv`,
+so a default that was taken is never mistaken for one that was agreed
+to. Raise or lower the wait with `CONFIRM_TIMEOUT_SECONDS` in
+`blast_align_tree/cli.py`; use `--duplicates auto` to skip the prompts
+altogether.
+
+Use `--duplicates` to control this:
+
+| Value | Behaviour |
+| --- | --- |
+| `ask` (default) | Confirm each query's collisions, waiting 10 s per prompt before taking the default. Falls back to `auto` when there is no terminal, so batch and HPC runs never block. |
+| `auto` | Apply the rules without prompting and warn at the end. |
+| `fail` | Stop the run and list the collisions, so you can pick a more specific `-hdr` / `-hdr_sfx`. |
+
+Every run writes `deduplication_log.tsv` next to the tree PDFs in the
+timestamped run folder — one row per affected record, with the stage,
+query, database, identifier, action, source ID, amino-acid length, the
+original FASTA header, and the reason:
+
+```
+stage         query        database      identifier  action   source_id     aa_len
+within_query  AT1G71830.1  TAIR10cds.fa  AT2G13800   kept     AT2G13800.1   601
+within_query  AT1G71830.1  TAIR10cds.fa  AT2G13800   dropped  AT2G13800.3   601
+```
+
+The end of the run summarises the collisions and, separately, how much
+the queries overlapped:
+
+```
+  Identifier collisions
+    within a query          6  (isoforms / duplicated loci sharing one identifier)
+    between queries         0  (same identifier, different source records)
+    between databases       0  (genome tag appended, nothing dropped)
+    records dropped         9  (longest amino-acid sequence retained)
+
+  Overlap between queries
+    AT1G71830.1 ∩ AT4G33430.1: 12 shared of 15/15 hits in TAIR10cds.fa
+```
+
+### Internal stop codons and reading frame
+
+`tblastn` hits are retrieved as whole nucleotide records and translated in
+**forward frame +1 of the record as stored in the database**. The frame and
+strand are never inferred from the data. This is correct for CDS databases (all
+bundled genomes) and wrong for transcript databases whose entries carry a 5′ UTR.
+
+`--internal-stops` controls what happens when a record contains an in-frame stop:
+
+| Value | Behaviour |
+|---|---|
+| `truncate` *(default)* | Translation ends at the first in-frame stop. The reported protein is the truncated product the locus encodes. Residue *p* maps to nucleotides `3p−2..3p` of the record. |
+| `readthrough` | Every codon kept in register; each in-frame stop written as `X`. Use when downstream domain content matters, e.g. comparing domain architecture across a degraded locus. |
+| `excise` | Legacy v1.0 behaviour: stop codons deleted and the flanking sequence joined. Produces a protein the genome does not encode and shifts downstream coordinates by one residue per excised stop. Kept only to reproduce older runs. |
+
+A well-formed CDS — begins with `ATG`, ends with a stop, no internal stops —
+gives identical output under all three. The nucleotide outputs
+(`all_hits.nt.fa`, `<entry>.nt.parse.merged.fa`) are always the untransformed
+records as returned by `blastdbcmd`, whatever the policy.
+
+Every `tblastn` run writes **`translation_report.tsv`** beside the tree PDFs,
+one row per sequence:
+
+| Column | Meaning |
+|---|---|
+| `identifier`, `source_id`, `database`, `queries` | which record this is, and which queries found it |
+| `action` | `kept`, or `dropped` if identifier reconciliation discarded it |
+| `nt_len`, `n_codons` | length of the retrieved record |
+| `frame`, `strand` | always `+1` and the stored strand, stated per row so the assumption is never implicit |
+| `start_codon`, `terminal_stop` | whether the record looks like a complete CDS |
+| `n_internal_stops`, `first_stop_aa_pos` | how many stops, and where the first one is (1-based) |
+| `aa_len_reported` | length actually written, under the policy in force |
+| `aa_len_ranking` | length excluding stops; identical under every policy, and what isoform ranking uses — so the stop policy cannot change which isoform wins a collision |
+| `aa_after_first_stop` | codons remaining in frame after the first internal stop |
+| `longest_downstream_orf_aa` | longest stop-free run after it — what matters for judging whether a real ORF survives downstream |
+| `best_frame` | the frame that reads furthest, from a six-frame diagnostic translation |
+| `flags` | see below |
+| `policy` | the `--internal-stops` value in force |
+
+Flags:
+
+| Flag | Meaning |
+|---|---|
+| `internal_stop` | at least one in-frame stop before the end of the record |
+| `no_start_codon` / `no_terminal_stop` | the record does not look like a complete CDS |
+| `len_not_multiple_of_3` | trailing bases could not be translated |
+| `frame_mismatch:<frame>` | another frame reads substantially further |
+| `possible_utr` | that frame is a forward frame — the database may hold transcripts with 5′ UTRs rather than CDS |
+| `possible_wrong_strand` | that frame is a reverse frame |
+| `orf_mostly_downstream` | more coding potential after the first stop than before it; the truncated protein is unlikely to be the real product |
+| `empty_translation` | no complete codon could be translated |
+
+Flagged records are **reported, never re-framed** — the frame actually used is
+always +1. A database that trips `possible_utr` on many hits probably holds
+transcripts rather than CDS.
+
+```
+  [translation] 10 sequences translated in frame +1 (strand: + (record as stored in the database; not inferred))
+    Internal stop policy: truncate - translation ends at the first in-frame stop; the truncated protein is reported
+    7 of 10 sequences contain an internal stop -> truncated at the first stop
+    5 flagged orf_mostly_downstream: more coding potential after the first stop than before it
+
+    !! 4 sequences read further in another frame.
+       Frame +1 is used regardless - these were NOT re-framed.
+       2 flagged possible_utr: the database may hold transcripts with 5' UTRs rather than CDS.
+       2 flagged possible_wrong_strand.
+           4  SynthTranscripts.fa
+       Check these databases before interpreting the affected proteins.
+```
+
+### Rooting the tree on an outgroup with `-a`
+
+Outgroup handling is two steps: pull the sequence into the run with
+`-add`/`-add_db`, then root the tree on it with `-a`/`--reroot`. `-a`
+takes a single tip and is passed straight through to `visualize_tree.r`,
+so the first-pass PDFs come out already rooted — no redraw needed:
+
+```
+blast-align-tree -q AT2G19590.1 -qdbs TAIR10cds.fa                  -n 15 15 -dbs TAIR10cds.fa Vung469cds.fa                  -hdr gene: locus=                  -add AT2G38240 -add_db TAIR10cds.fa                  -a AT2G38240
+```
+
+The ID must match the **tip label** as it appears in the tree, which is
+whatever `-hdr` parsing leaves behind — `gene:` strips the isoform
+suffix, so the tip is `AT2G38240`, not `AT2G38240.1`. If the ID is not a
+tip, the run says so, suggests the near match, and draws the tree
+unrooted rather than failing at the last step; you can then reroot with
+the `Rscript …` redraw command printed at the end of the run.
 
 ### Slicing query amino-acid ranges with `-aa`
 

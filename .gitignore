@@ -43,6 +43,11 @@
 !/blast_align_tree
 !/blast_align_tree/**
 
+# Tests
+!/tests
+!/tests/**
+tests/**/__pycache__/
+
 # Python build artifacts inside the package
 blast_align_tree/**/__pycache__/
 blast_align_tree/**/*.egg-info/

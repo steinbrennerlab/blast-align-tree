@@ -216,6 +216,20 @@ write.tree(tree,file_nwk)
 
 p <- ggtree(tree, size=opt$line) #size specifies line size thickness
 
+# Add the same branch-length scale to the text, heatmap, and MSA trees.
+# Fix its width from the displayed tree before adding annotation panels.
+tree_span <- diff(range(p$data$x))
+if (!is.null(tree$edge.length) && is.finite(tree_span) && tree_span > 0) {
+  p <- p + geom_treescale(
+    x = min(p$data$x), y = -1,
+    width = signif(tree_span / 10, 1),
+    offset = 0.3, fontsize = 2, linesize = 0.3,
+    label = "substitutions/site", offset.label = -0.4
+  ) + expand_limits(y = -3)
+} else {
+  message("[R] No positive branch-length span; skipping tree scale bar.")
+}
+
 p <- p + theme(legend.title = element_text(size = 6),
                legend.text = element_text(size = 5),
                legend.key.size = unit(0.3, "cm"),
