@@ -1,11 +1,20 @@
-# Unreleased — Explicit, auditable handling of identifier collisions and internal stop codons
-
-> Draft. Version number not yet assigned; more features are still landing.
-> Rename to `RELEASE_NOTES_v<x.y.z>.md` and bump `pyproject.toml` at release time.
+# v1.0.4 — Explicit, auditable handling of identifier collisions and internal stop codons
 
 Two places where the pipeline silently discarded or fabricated sequence are made
 explicit, documented, and logged: which record wins an identifier collision, and
-what happens to an in-frame stop codon.
+what happens to an in-frame stop codon. Runs now also record the command that
+made them, can be rooted on an outgroup in one pass, and draw a branch-length
+scale; the Genome Selector remembers its settings between sessions.
+
+## Upgrade
+
+```bash
+pip install --upgrade blast-align-tree
+```
+
+The Genome Selector now depends on **Pillow** (`>=9.1`) to display its logo.
+`pip` installs it automatically, including inside the `environments/` conda
+environments.
 
 ## Part 1 — Identifier collisions
 
@@ -231,3 +240,46 @@ passes it straight through, so the PDFs a run produces come out already rooted.
   `--motifs`, `--hmms`, `--slice`) as well as short ones
 - New `tests/test_reroot.py` covering the tip lookup, the near-match warning,
   and the flag's path into the Rscript command
+
+## Part 5 — Genome Selector settings persist between sessions
+
+Every launch of `bat-genome-selector` used to start from scratch, so a working
+set of genomes, headers, `-n` values and advanced options had to be re-entered
+each time.
+
+- **The full UI state is saved** to `.bat_selector_settings.json` in the
+  project directory on Generate and on window close, and restored at startup:
+  every global and advanced option plus each genome row's checkbox, header,
+  suffix, `-n`, and query.
+- **Command-line options win.** `--select-genome` (new, preselects genomes
+  from the command line) and `--default-n` override the saved session;
+  `--no-restore` skips it entirely.
+- **Bad settings degrade, never fail.** A malformed file, an unknown settings
+  version, or a saved header that no longer exists in its FASTA falls back to
+  defaults with a message.
+- **New Reset All button** returns every field to the state the launcher
+  starts in, after a confirmation dialog, and saves that immediately.
+- **Refresh keeps per-row state.** Rescanning `./genomes/` no longer silently
+  resets each row's query, header, suffix, and `-n`.
+
+## Part 6 — Tree PDFs and the Genome Selector window
+
+- **Branch-length scale bar on every tree PDF.** The text, heatmap, and MSA
+  versions all carry the same scale, labelled in substitutions/site and sized
+  to the displayed tree, subtrees included. Trees without branch lengths, or
+  with a zero branch-length span, omit it.
+- **BAT logo and working-directory link.** The Genome Selector's ASCII banner
+  is replaced by the BAT logo, with the current project path beneath it; click
+  the path to open the folder in Explorer, Finder, or your Linux file manager.
+
+### Full changelog
+
+- `genome_selector.py`: settings save/restore (`SETTINGS_FILE`), Reset All,
+  `--select-genome`, `--no-restore`; Refresh preserves per-row state
+- `visualize_tree.r`: `geom_treescale()` scale bar, skipped when there is no
+  positive branch-length span
+- `genome_selector.py`: logo banner via Pillow; clickable working-directory
+  link using `open_folder()`
+- `pyproject.toml`: `Pillow>=9.1` dependency; `data/*.jpg` added to package
+  data; version bumped to 1.0.4
+- New `blast_align_tree/data/bat_logo.jpg`
