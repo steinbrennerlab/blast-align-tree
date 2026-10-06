@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
 from . import identifiers
+from . import homology
 from . import translation
 from .identifiers import parse_header_token as _parse_header_token
 
@@ -40,6 +41,7 @@ _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
+HOMOLOGY_REPORT_NAME = "homology_report.tsv"
 RUN_COMMAND_NAME = "run_command.txt"
 # How long a collision prompt waits before taking its default answer,
 # so a run left unattended finishes instead of blocking overnight.
@@ -480,6 +482,9 @@ def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases:
             full = base.with_suffix(base.suffix + ".full")
             if _move_file_if_exists(full, db_dir / f"{q_label}.blast_report.txt"):
                 moved += 1
+            hits_tsv = Path(str(base) + homology.HITS_SUFFIX)
+            if _move_file_if_exists(hits_tsv, db_dir / f"{q_label}.blast_hits.tsv"):
+                moved += 1
 
         aa_out = db_dir / "all_hits.aa.fa"
         db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
@@ -814,13 +819,17 @@ def blast_and_post(entry: str, q: str, db: str, max_targets: str, workdir: Path,
     db_path = workdir / "genomes" / db
     out_base = outbase(workdir, entry, q, db, blast_type)
 
-    # IDs only
+    # Per-hit stats for the homology report, then the bare ID list that
+    # blastdbcmd reads as its entry batch.
+    hits_tsv = Path(str(out_base) + homology.HITS_SUFFIX)
     run([
         "tblastn" if blast_type == "tblastn" else "blastp",
         "-query", str(q_fa), "-db", str(db_path),
         "-max_target_seqs", str(max_targets), "-max_hsps", "1",
-        "-outfmt", "6 sseqid", "-out", str(out_base)
+        "-outfmt", homology.BLAST_OUTFMT, "-out", str(hits_tsv)
     ])
+    write_text(out_base, "".join(line.split("\t", 1)[0] + "\n"
+                                 for line in read_lines(hits_tsv) if line.strip()))
     # full report (pairwise)
     full = out_base.with_suffix(out_base.suffix + ".full")
     run([
@@ -2136,6 +2145,19 @@ def main():
             final_ids, resolution.dropped,
         )
 
+    # Step 6.6: summarize the weakest hit each search kept, labelled with the
+    # identifier it carries in the tree.
+    max_targets_by_db = dict(zip(args.database, args.seqs))
+    homology_rows = [
+        homology.build_row(
+            q, db, max_targets_by_db[db],
+            homology.read_hits(Path(str(outbase(workdir, entry, q, db, blast_type))
+                                    + homology.HITS_SUFFIX)),
+            resolution.final_ids,
+        )
+        for q in args.queries for db in args.database
+    ]
+
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
     align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode, args.raxml_seed)
@@ -2202,6 +2224,10 @@ def main():
             entry=entry, policy=args.internal_stops, blast_type=blast_type,
         )
 
+    # Same placement, same reason.
+    homology.write_log(entry_dir / HOMOLOGY_REPORT_NAME, homology_rows,
+                       entry=entry, blast_type=blast_type)
+
     # Step 10: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_dir = archive_run(entry_dir, timestamp)
@@ -2216,6 +2242,7 @@ def main():
     if translation_rows:
         translation.print_report(translation_rows, args.internal_stops,
                                  run_dir / TRANSLATION_REPORT_NAME)
+    homology.print_report(homology_rows, run_dir / HOMOLOGY_REPORT_NAME)
     print()
     print(f"  Alignment: {run_dir / RUN_ASSETS_DIRNAME / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / RUN_ASSETS_DIRNAME / 'combinedtree.nwk'}")
