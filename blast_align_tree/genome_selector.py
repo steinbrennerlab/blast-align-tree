@@ -33,6 +33,7 @@ VISUALIZE_TREE_R = Path(str(_pkg_files("blast_align_tree") / "data" / "visualize
 RUN_COMMAND_NAME = "run_command.txt"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
+HOMOLOGY_REPORT_NAME = "homology_report.tsv"
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 MAPPING_NAME = "merged_genome_mapping.txt"
 COMBINED_TREE_NAME = "combinedtree.nwk"
@@ -429,7 +430,7 @@ def _data_rows(path: Path) -> list[list[str]]:
 
 
 def log_stats(run_dir: Path) -> list[str]:
-    """Summarize the de-duplication and translation logs, when present."""
+    """Summarize the de-duplication, translation and homology logs, when present."""
     lines = []
 
     dedup = _data_rows(run_dir / DEDUP_LOG_NAME)
@@ -456,6 +457,26 @@ def log_stats(run_dir: Path) -> list[str]:
             pass
         lines.append(f"Translated: {len(translated)} sequences — "
                      f"{stops} with internal stops")
+
+    homology_path = run_dir / HOMOLOGY_REPORT_NAME
+    searches = _data_rows(homology_path)
+    if searches:
+        try:
+            header = [ln for ln in homology_path.read_text(
+                encoding="utf-8", errors="replace").splitlines()
+                if ln.strip() and not ln.startswith("#")][0].split("\t")
+            ev, pid = header.index("worst_evalue"), header.index("worst_pct_identity")
+            capped = sum(1 for row in searches
+                         if len(row) > header.index("limited_by_n")
+                         and row[header.index("limited_by_n")] == "yes")
+            worst = max((row for row in searches if len(row) > ev and row[ev] != "-"),
+                        key=lambda row: float(row[ev]), default=None)
+            text = f"Homology:  {len(searches)} searches"
+            if worst is not None:
+                text += f" — weakest hit e-value {worst[ev]}, {worst[pid]}% identity"
+            lines.append(f"{text}; {capped} reached the -n cap")
+        except (OSError, ValueError, IndexError):
+            pass
     return lines
 
 

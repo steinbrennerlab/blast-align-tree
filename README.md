@@ -580,6 +580,34 @@ transcripts rather than CDS.
        Check these databases before interpreting the affected proteins.
 ```
 
+### How weak are the weakest hits?
+
+`-n` caps the number of hits per search; no e-value cutoff is applied beyond
+BLAST's default (10). A meaningful cutoff depends on the gene family, sequence
+length and database size, so instead every run writes
+**`homology_report.tsv`** beside the tree PDFs: one row per (query, database)
+search describing the weakest hit it kept.
+
+| Column | Meaning |
+|---|---|
+| `query`, `database`, `max_target_seqs` | which search, and its `-n` |
+| `hits_returned` | hits BLAST returned (one HSP per subject) |
+| `limited_by_n` | `yes` if the search reached the `-n` cap, so weaker homologs may exist beyond it; `no` if every hit with e-value ≤ 10 was kept |
+| `worst_hit`, `worst_hit_identifier` | the retained hit with the highest e-value, and its tree label (`-` if dropped by de-duplication) |
+| `worst_evalue`, `worst_bitscore` | its e-value and bit score |
+| `worst_pct_identity`, `worst_pct_similarity` | BLAST `pident` and `ppos` over the HSP |
+| `worst_aln_length`, `worst_query_coverage` | HSP length, and BLAST `qcovhsp` (% of the query covered) |
+| `best_evalue`, `best_pct_identity` | the strongest hit, for contrast |
+
+```
+  [homology] 1 BLAST searches; worst retained hit per search in homology_report.tsv
+    Weakest hit kept: AT4G19500.1 (AT5G45260.1 vs TAIR10cds.fa): e-value 3.29e-105, 35.1% identity, 54.6% similarity
+    1 of 1 searches reached the -n cap; weaker homologs may exist beyond it
+```
+
+The per-hit table behind each row is kept as
+`genes_alignments_trees/hits/<database>/<query>.blast_hits.tsv`.
+
 ### Rooting the tree on an outgroup with `-a`
 
 Outgroup handling is two steps: pull the sequence into the run with
