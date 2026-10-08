@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 
 from . import identifiers
+from . import homology
 from . import translation
 from .identifiers import parse_header_token as _parse_header_token
 
@@ -40,6 +41,7 @@ _PACKAGE_DATA = Path(str(_pkg_files("blast_align_tree") / "data"))
 RUN_ASSETS_DIRNAME = "genes_alignments_trees"
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
+HOMOLOGY_REPORT_NAME = "homology_report.tsv"
 RUN_COMMAND_NAME = "run_command.txt"
 # How long a collision prompt waits before taking its default answer,
 # so a run left unattended finishes instead of blocking overnight.
@@ -89,6 +91,50 @@ def run(cmd: List[str], cwd: Optional[Path] = None, capture: bool = False) -> su
             sys.stderr.write(result.stderr)
         raise subprocess.CalledProcessError(result.returncode, cmd)
     return result
+
+# Fatal raxml-ng errors caused by the --threads value (raxml-ng 1.2). Only
+# these trigger a single-thread rerun; any other failure is raised as-is.
+RAXML_THREAD_ERRORS = (
+    "Too few patterns per thread!",
+    "CPU core oversubscription detected!",
+)
+
+def _raxml_error_text(result: subprocess.CompletedProcess) -> str:
+    """ERROR/NOTE lines from raxml-ng output (it reports errors on stdout)."""
+    out = "\n".join(x for x in (result.stdout, result.stderr) if x).strip()
+    lines = out.splitlines()
+    keep = [l for l in lines if l.startswith(("ERROR", "NOTE", "WARNING"))
+            or any(e in l for e in RAXML_THREAD_ERRORS)]
+    return "\n".join(keep or lines[-20:])
+
+def run_raxml(cmd: List[str], cwd: Path, threads: int, step: str,
+              cleanup_patterns: Sequence[str]) -> subprocess.CompletedProcess:
+    """Run raxml-ng with --threads; if it rejects the thread count, rerun once
+    on 1 thread. Raises SystemExit with the original error on failure."""
+    def attempt(n: int) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd + ["--threads", str(n)], cwd=str(cwd),
+                              text=True, capture_output=True)
+
+    result = attempt(threads)
+    if result.returncode == 0:
+        return result
+    first_error = _raxml_error_text(result)
+    if threads <= 1 or not any(e in first_error for e in RAXML_THREAD_ERRORS):
+        raise SystemExit(f"RAxML-NG {step} failed (exit {result.returncode}):\n{first_error}")
+
+    print(f"    ⚠ RAxML-NG rejected --threads {threads} for this alignment; retrying {step} with 1 thread...")
+    print("      " + "\n      ".join(first_error.splitlines()))
+    for pattern in cleanup_patterns:
+        for fp in cwd.glob(pattern):
+            fp.unlink(missing_ok=True)
+    retry = attempt(1)
+    if retry.returncode == 0:
+        return retry
+    raise SystemExit(
+        f"RAxML-NG {step} failed on retry with 1 thread (exit {retry.returncode}):\n"
+        f"{_raxml_error_text(retry)}\n\n"
+        f"Original error with --threads {threads}:\n{first_error}"
+    )
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
@@ -436,6 +482,9 @@ def cleanup_run_root(entry_dir: Path, entry: str, queries: List[str], databases:
             full = base.with_suffix(base.suffix + ".full")
             if _move_file_if_exists(full, db_dir / f"{q_label}.blast_report.txt"):
                 moved += 1
+            hits_tsv = Path(str(base) + homology.HITS_SUFFIX)
+            if _move_file_if_exists(hits_tsv, db_dir / f"{q_label}.blast_hits.tsv"):
+                moved += 1
 
         aa_out = db_dir / "all_hits.aa.fa"
         db_rmdup = entry_dir / f"{dbl}.parse.merged.rmdup.fa"
@@ -770,13 +819,17 @@ def blast_and_post(entry: str, q: str, db: str, max_targets: str, workdir: Path,
     db_path = workdir / "genomes" / db
     out_base = outbase(workdir, entry, q, db, blast_type)
 
-    # IDs only
+    # Per-hit stats for the homology report, then the bare ID list that
+    # blastdbcmd reads as its entry batch.
+    hits_tsv = Path(str(out_base) + homology.HITS_SUFFIX)
     run([
         "tblastn" if blast_type == "tblastn" else "blastp",
         "-query", str(q_fa), "-db", str(db_path),
         "-max_target_seqs", str(max_targets), "-max_hsps", "1",
-        "-outfmt", "6 sseqid", "-out", str(out_base)
+        "-outfmt", homology.BLAST_OUTFMT, "-out", str(hits_tsv)
     ])
+    write_text(out_base, "".join(line.split("\t", 1)[0] + "\n"
+                                 for line in read_lines(hits_tsv) if line.strip()))
     # full report (pairwise)
     full = out_base.with_suffix(out_base.suffix + ".full")
     run([
@@ -1217,40 +1270,19 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
             seed_ml = None
             seed_bs = None
 
-        # ---- Step 1: ML tree search with retry fallback ----
+        # ---- Step 1: ML tree search ----
         print("  [RAxML] Running ML tree search...")
         ml_start = datetime.now()
-        ml_success = False
-        for attempt in range(2):
-            current_threads = max(1, threads - attempt)
-            if attempt > 0:
-                print(f"    ⚠ Retrying with {current_threads} thread(s)...")
-                for pattern in [f"{prefix}.raxml.log", f"{prefix}.raxml.startTree"]:
-                    for fp in entry_dir.glob(pattern):
-                        fp.unlink(missing_ok=True)
-            
-            try:
-                cmd = [
-                    "raxml-ng",
-                    "--msa", str(aln_fa),
-                    "--model", "LG+G",
-                    "--threads", str(current_threads),
-                    "--prefix", prefix
-                ]
-                if seed_ml is not None:
-                    cmd.extend(["--seed", str(seed_ml)])
-                
-                run(cmd, cwd=entry_dir)
-                ml_success = True
-                break
-            except subprocess.CalledProcessError as e:
-                if attempt == 0:
-                    continue
-                else:
-                    raise
-
-        if not ml_success:
-            raise SystemExit("RAxML ML tree search failed after retries")
+        cmd = [
+            "raxml-ng",
+            "--msa", str(aln_fa),
+            "--model", "LG+G",
+            "--prefix", prefix
+        ]
+        if seed_ml is not None:
+            cmd.extend(["--seed", str(seed_ml)])
+        run_raxml(cmd, entry_dir, threads, "ML tree search",
+                  [f"{prefix}.raxml.log", f"{prefix}.raxml.startTree"])
 
         ml_end = datetime.now()
         print(f"    ML search time: {ml_end - ml_start}")
@@ -1259,42 +1291,21 @@ def align_and_build_tree(entry: str, workdir: Path, aligner: str, tree_builder: 
         if not best_tree.exists():
             raise SystemExit(f"RAxML-NG did not produce a bestTree: {best_tree}")
 
-        # ---- Step 2: Bootstrap replicates (also with retry) ----
+        # ---- Step 2: Bootstrap replicates ----
         print("  [RAxML] Running bootstrap replicates...")
         bs_start = datetime.now()
-        bs_success = False
-        for attempt in range(2):
-            current_threads = max(1, threads - attempt)
-            if attempt > 0:
-                print(f"    ⚠ Retrying bootstrap with {current_threads} thread(s)...")
-                for pattern in [f"{prefix}.raxml.log"]:
-                    for fp in entry_dir.glob(pattern):
-                        fp.unlink(missing_ok=True)
-            
-            try:
-                cmd = [
-                    "raxml-ng",
-                    "--bootstrap",
-                    "--msa", str(aln_fa),
-                    "--model", "LG+G",
-                    "--threads", str(current_threads),
-                    "--bs-trees", "100",
-                    "--prefix", prefix
-                ]
-                if seed_bs is not None:
-                    cmd.extend(["--seed", str(seed_bs)])
-                
-                run(cmd, cwd=entry_dir)
-                bs_success = True
-                break
-            except subprocess.CalledProcessError as e:
-                if attempt == 0:
-                    continue
-                else:
-                    raise
-
-        if not bs_success:
-            raise SystemExit("RAxML bootstrap replicates failed after retries")
+        cmd = [
+            "raxml-ng",
+            "--bootstrap",
+            "--msa", str(aln_fa),
+            "--model", "LG+G",
+            "--bs-trees", "100",
+            "--prefix", prefix
+        ]
+        if seed_bs is not None:
+            cmd.extend(["--seed", str(seed_bs)])
+        run_raxml(cmd, entry_dir, threads, "bootstrap",
+                  [f"{prefix}.raxml.log"])
 
         bs_end = datetime.now()
         print(f"    Bootstrap time: {bs_end - bs_start}")
@@ -2134,6 +2145,19 @@ def main():
             final_ids, resolution.dropped,
         )
 
+    # Step 6.6: summarize the weakest hit each search kept, labelled with the
+    # identifier it carries in the tree.
+    max_targets_by_db = dict(zip(args.database, args.seqs))
+    homology_rows = [
+        homology.build_row(
+            q, db, max_targets_by_db[db],
+            homology.read_hits(Path(str(outbase(workdir, entry, q, db, blast_type))
+                                    + homology.HITS_SUFFIX)),
+            resolution.final_ids,
+        )
+        for q in args.queries for db in args.database
+    ]
+
     # Step 7: alignment and tree building
     print(f"Alignment & Tree Threads: {args.threads}")
     align_and_build_tree(entry, workdir, args.aligner, args.tree_builder, args.threads, args.mafft_mode, args.raxml_seed)
@@ -2200,6 +2224,10 @@ def main():
             entry=entry, policy=args.internal_stops, blast_type=blast_type,
         )
 
+    # Same placement, same reason.
+    homology.write_log(entry_dir / HOMOLOGY_REPORT_NAME, homology_rows,
+                       entry=entry, blast_type=blast_type)
+
     # Step 10: archive into runs/<timestamp>
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_dir = archive_run(entry_dir, timestamp)
@@ -2214,6 +2242,7 @@ def main():
     if translation_rows:
         translation.print_report(translation_rows, args.internal_stops,
                                  run_dir / TRANSLATION_REPORT_NAME)
+    homology.print_report(homology_rows, run_dir / HOMOLOGY_REPORT_NAME)
     print()
     print(f"  Alignment: {run_dir / RUN_ASSETS_DIRNAME / 'hits' / f'{entry}.parse.merged.aligned.fa'}")
     print(f"  Tree:      {run_dir / RUN_ASSETS_DIRNAME / 'combinedtree.nwk'}")
