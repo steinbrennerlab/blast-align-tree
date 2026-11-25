@@ -288,6 +288,21 @@ bat-genome-selector
   Edit the fields and click **Generate Command**. Loading replaces the current
   fields and reports missing genomes or options without panel controls;
   it is unavailable for older runs without a saved command.
+- **Launcher options.** The selector reopens with your last session's
+  settings. Options given on its command line override them, which makes
+  it easy to keep shortcuts for different setups:
+
+  ```
+  bat-genome-selector --select-genome TAIR10cds.fa --select-genome Pvul218cds.fa \
+                      --header TAIR10cds.fa=gene: --header Pvul218cds.fa=locus= \
+                      --default-n 60 --blast-type tblastn --clear-queries
+  ```
+
+  `--select-genome` checks genomes (paths relative to `genomes/`), and
+  `--header GENOME=TOKEN` sets a genome's `-hdr` token. `--default-n` sets
+  the hit count for every genome, `--blast-type` picks tblastn or blastp,
+  and `--clear-queries` empties every query box. `--no-restore` ignores the
+  saved session altogether. **Reset All** returns to the launcher's settings.
 
 ## 📚 Full Tutorial
 

@@ -100,6 +100,20 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+def normalize_genome_name(name: str) -> str:
+    """Match a genome path relative to genomes/ regardless of slashes or case."""
+    return name.replace("\\", "/").casefold()
+
+
+def genome_header(value: str) -> tuple[str, str]:
+    """Parse GENOME=TOKEN for --header. The token may itself contain '='."""
+    genome, sep, token = value.partition("=")
+    if not sep or not genome.strip() or not token.strip():
+        raise argparse.ArgumentTypeError(
+            "must be GENOME=TOKEN, e.g. Pvul218cds.fa=locus=")
+    return genome.strip(), token.strip()
+
+
 def has_blastdb(filepath: Path) -> bool:
     """Check whether BLAST database index files exist for a FASTA file."""
     return Path(str(filepath) + ".nhr").exists() or Path(str(filepath) + ".phr").exists()
@@ -697,7 +711,10 @@ class ToolTip:
 class GenomeSelectorApp:
     def __init__(self, root: tk.Tk, default_n: int | None = None,
                  selected_genomes: list[str] | None = None,
-                 restore: bool = True):
+                 restore: bool = True,
+                 headers: list[tuple[str, str]] | None = None,
+                 blast_type: str | None = None,
+                 clear_queries: bool = False):
         self.root = root
         root.title("BAT Genome Selector")
         # Tall enough that the genome table and the Recent Runs details
@@ -705,11 +722,15 @@ class GenomeSelectorApp:
         root.minsize(1050, 800)
 
         self.default_n = DEFAULT_N if default_n is None else default_n
-        self._default_n_from_cli = default_n is not None
+        self._cli_default_n = default_n
         self.selected_genomes = {
-            name.replace("\\", "/").casefold()
-            for name in (selected_genomes or [])
+            normalize_genome_name(name) for name in (selected_genomes or [])
         }
+        self.launch_headers = {
+            normalize_genome_name(name): token for name, token in (headers or [])
+        }
+        self.launch_blast_type = blast_type
+        self.launch_clear_queries = clear_queries
         self.row_tokens: dict[str, list[str]] = {}
 
         self._build_banner()
@@ -724,9 +745,13 @@ class GenomeSelectorApp:
         self._build_advanced_panel()
         self._build_action_buttons()
 
-        # Everything above is the state this launcher starts in — command-line
-        # options included. "Reset All" restores exactly this.
+        # Everything above plus the command-line options is the state this
+        # launcher starts in. "Reset All" restores exactly this.
+        launch_warnings = self._apply_launch_options()
         self._launch_defaults = self._snapshot()
+        if launch_warnings:
+            self._set_output("Launcher options, with changes:\n"
+                             + "\n".join(launch_warnings))
         if restore:
             self._load_settings()
         root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -1583,20 +1608,58 @@ class GenomeSelectorApp:
                 f"Ignoring {SETTINGS_FILE.name}: unrecognized settings format.")
             return
 
-        # Command-line options win over the saved session.
-        if self._default_n_from_cli:
-            (data.get("globals") or {}).pop("default_n", None)
-
         warnings = self._apply_settings(data)
+        # Command-line options win over the saved session.
+        launch_warnings = self._apply_launch_options()
 
-        # Genomes named on the command line win over the saved selection.
-        if self.selected_genomes:
-            for chk_var, _h, _s, _n, _q, _gpath, rel in self.rows:
-                chk_var.set(rel.casefold() in self.selected_genomes)
-
+        output = []
         if warnings:
-            self._set_output("Restored previous settings, with changes:\n"
-                             + "\n".join(warnings))
+            output.append("Restored previous settings, with changes:\n"
+                          + "\n".join(warnings))
+        if launch_warnings:
+            output.append("Launcher options, with changes:\n"
+                          + "\n".join(launch_warnings))
+        if output:
+            self._set_output("\n\n".join(output))
+
+    def _apply_launch_options(self) -> list[str]:
+        """Apply the launcher's command-line options over the current fields.
+
+        Runs once before the launch snapshot, so Reset All returns here, and
+        again after the saved session is restored, so the launcher wins over
+        it. Returns warnings for options that could not be applied.
+        """
+        warnings = []
+        cli_n = self._cli_default_n
+        if cli_n is not None:
+            self.default_n = cli_n
+            self.default_n_var.set(str(cli_n))
+        if self.launch_blast_type is not None:
+            self.blast_type_var.set(self.launch_blast_type)
+
+        known = set()
+        for chk_var, hdr_var, _sfx_var, n_var, q_var, _gpath, rel in self.rows:
+            key = rel.casefold()
+            known.add(key)
+            if self.selected_genomes:
+                chk_var.set(key in self.selected_genomes)
+            if cli_n is not None:
+                n_var.set(str(cli_n))
+            if self.launch_clear_queries:
+                q_var.set("")
+            token = self.launch_headers.get(key)
+            if token is None:
+                continue
+            tokens = self.row_tokens.get(rel, [])
+            if tokens and token not in tokens:
+                warnings.append(f"  {rel}: header '{token}' is not in this file "
+                                f"— keeping '{hdr_var.get()}'")
+            else:
+                hdr_var.set(token)
+
+        for name in sorted((self.selected_genomes | set(self.launch_headers)) - known):
+            warnings.append(f"  {name}: no such genome in genomes/")
+        return warnings
 
     def _reset_all(self):
         confirm = messagebox.askyesno(
@@ -1857,8 +1920,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--default-n",
         type=positive_int,
         default=None,
-        help=("default number of BLAST hits per selected genome "
-              f"(default: {DEFAULT_N}, or the saved value from the last session)"),
+        help=("number of BLAST hits for every genome; overrides the per-genome "
+              "counts saved from the last session "
+              f"(default: {DEFAULT_N}, or the saved values)"),
     )
     parser.add_argument(
         "--select-genome",
@@ -1868,6 +1932,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=("preselect a genome by its path relative to genomes/; "
               "repeat this option to select more than one. Overrides the "
               "selection saved from the last session"),
+    )
+    parser.add_argument(
+        "--header",
+        action="append",
+        default=[],
+        type=genome_header,
+        metavar="GENOME=TOKEN",
+        help=("header token for a genome, e.g. Pvul218cds.fa=locus= or "
+              "TAIR10cds.fa=gene:; repeat for more genomes. Overrides the "
+              "header saved from the last session"),
+    )
+    parser.add_argument(
+        "--blast-type",
+        choices=["tblastn", "blastp"],
+        default=None,
+        help="BLAST type. Overrides the value saved from the last session",
+    )
+    parser.add_argument(
+        "--clear-queries",
+        action="store_true",
+        help="start with every query box empty, ignoring saved queries",
     )
     parser.add_argument(
         "--no-restore",
@@ -1885,6 +1970,9 @@ def main(argv: list[str] | None = None):
         default_n=args.default_n,
         selected_genomes=args.select_genome,
         restore=not args.no_restore,
+        headers=args.header,
+        blast_type=args.blast_type,
+        clear_queries=args.clear_queries,
     )
     root.mainloop()
 
