@@ -15,8 +15,9 @@ import shutil
 import random
 import re
 import subprocess
+import tempfile
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from pathlib import Path
 from importlib.resources import files as _pkg_files
 
@@ -31,6 +32,9 @@ VISUALIZE_TREE_R = Path(str(_pkg_files("blast_align_tree") / "data" / "visualize
 # repeated rather than imported so the GUI stays free of the pipeline's
 # Biopython/R dependencies.
 RUN_COMMAND_NAME = "run_command.txt"
+RUN_METADATA_NAME = ".bat_run_metadata.json"
+RUN_SORT_OPTIONS = ("Newest first", "Oldest first", "Starred first",
+                    "Query A–Z", "Query Z–A", "Name A–Z")
 DEDUP_LOG_NAME = "deduplication_log.tsv"
 TRANSLATION_REPORT_NAME = "translation_report.tsv"
 HOMOLOGY_REPORT_NAME = "homology_report.tsv"
@@ -253,11 +257,11 @@ def truncate_name(name: str, maxlen: int = MAX_LABEL_LEN) -> str:
     return name[: maxlen - 3] + "..."
 
 
-def scan_recent_runs(limit: int = 20) -> list[tuple[str, str, Path]]:
+def scan_recent_runs(limit: int | None = 20) -> list[tuple[str, str, Path]]:
     """Scan for pipeline run directories (ENTRY/runs/TIMESTAMP/).
 
     Returns a list of (entry, timestamp, full_path) sorted newest-first,
-    capped at *limit*.
+    capped at *limit*, or all runs when it is None.
     """
     results = []
     for entry_dir in PROJ_DIR.iterdir():
@@ -272,6 +276,52 @@ def scan_recent_runs(limit: int = 20) -> list[tuple[str, str, Path]]:
     # Sort by timestamp descending (newest first)
     results.sort(key=lambda r: r[1], reverse=True)
     return results[:limit]
+
+
+def read_run_metadata(run_dir: Path) -> dict:
+    """Read optional display metadata, including for runs made by older BATs."""
+    try:
+        data = json.loads((run_dir / RUN_METADATA_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "name": data.get("name", "") if isinstance(data.get("name"), str) else "",
+        "starred": data.get("starred") is True,
+    }
+
+
+def write_run_metadata(run_dir: Path, metadata: dict):
+    """Atomically save labels without changing run paths or pipeline outputs."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         dir=run_dir, prefix=".bat_run_",
+                                         suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(metadata, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        temporary.replace(run_dir / RUN_METADATA_NAME)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def sort_runs(runs: list[tuple[str, str, Path]], sort_by: str,
+              metadata: dict[Path, dict]) -> list[tuple[str, str, Path]]:
+    """Sort by the requested field, with newest runs first within each group."""
+    ordered = sorted(runs, key=lambda run: (run[0].casefold(), str(run[2])))
+    ordered.sort(key=lambda run: run[1], reverse=sort_by != "Oldest first")
+    if sort_by == "Starred first":
+        ordered.sort(key=lambda run: not metadata.get(run[2], {}).get("starred", False))
+    elif sort_by in ("Query A–Z", "Query Z–A"):
+        ordered.sort(key=lambda run: run[0].casefold(), reverse=sort_by == "Query Z–A")
+    elif sort_by == "Name A–Z":
+        ordered.sort(key=lambda run: (
+            not metadata.get(run[2], {}).get("name", ""),
+            metadata.get(run[2], {}).get("name", "").casefold()))
+    return ordered
 
 
 def redraw_command(entry: str, timestamp: str, datasets: str | None = None) -> str:
@@ -334,8 +384,10 @@ def command_flags(command: str) -> dict[str, list[str]]:
     for token in tokens[1:]:  # tokens[0] is the program name
         token = token.strip("\"'")
         if _is_flag(token):
-            current = token
+            current, separator, value = token.partition("=")
             flags.setdefault(current, [])
+            if separator:
+                flags[current].append(value.strip("\"'"))
         elif current is not None:
             flags[current].append(token)
     return flags
@@ -347,6 +399,95 @@ def _flag_values(flags: dict[str, list[str]], *names: str) -> list[str]:
         if name in flags:
             return flags[name]
     return []
+
+
+def settings_from_command(command: str, genomes: list[str]) -> tuple[dict, list[str]]:
+    """Translate recorded options into form state, reporting anything not loaded."""
+    flags = command_flags(command)
+    consumed = set()
+
+    def values(*names):
+        consumed.update(names)
+        return _flag_values(flags, *names)
+
+    queries = values("-q", "--queries")
+    qdbs = values("-qdbs", "--query_databases")
+    dbs = values("-dbs", "--database")
+    hdrs = values("-hdr", "--header")
+    ns = values("-n", "--seqs")
+    suffixes = values("-hdr_sfx", "--header_suffix")
+    if (not queries or not dbs or len(queries) != len(qdbs)
+            or len(dbs) != len(hdrs) or len(dbs) != len(ns)
+            or (suffixes and len(suffixes) != len(dbs))):
+        raise ValueError("The saved command has missing or mismatched query/database options.")
+
+    warnings = []
+    rows = {name: {"selected": False, "hdr": "id", "sfx": "none",
+                   "n": str(DEFAULT_N), "q": ""} for name in genomes}
+
+    def normalize(name):
+        name = name.replace("\\", "/")
+        while name.startswith("./"):
+            name = name[2:]
+        return name
+
+    lookup = {normalize(name): name for name in genomes}
+
+    def find_row(name):
+        key = normalize(name)
+        # Prefer the exact relative path; do not guess from a basename.
+        rel = lookup.get(key)
+        if rel is None and key.startswith("genomes/"):
+            rel = lookup.get(key[len("genomes/"):])
+        if rel is None:
+            warning = f"Genome not available in the panel: {name}"
+            if warning not in warnings:
+                warnings.append(warning)
+            return None
+        return rows[rel]
+
+    for i, db in enumerate(dbs):
+        row = find_row(db)
+        if row is not None:
+            row.update(selected=True, hdr=hdrs[i], n=ns[i],
+                       sfx=suffixes[i] if suffixes else "none")
+    for query, db in zip(queries, qdbs):
+        row = find_row(db)
+        if row is not None:
+            row["q"] = (row["q"] + " " + query).strip()
+
+    globals_ = {"default_n": str(DEFAULT_N), "prepend": True}
+    for key, names, default in (
+        ("aligner", ("--aligner",), "clustalo"),
+        ("mafft_mode", ("--mafft_mode",), "auto"),
+        ("tree_builder", ("--tree_builder",), "FastTree"),
+        ("blast_type", ("--blast_type",), "tblastn"),
+        ("threads", ("--threads",), str(max(1, (os.cpu_count() or 2) // 2))),
+        ("add_seqs", ("-add", "--add_seqs"), ""),
+        ("add_dbs", ("-add_db", "--add_dbs"), ""),
+        ("reroot", ("-a", "--reroot"), ""),
+        ("motif", ("--motif",), ""),
+        ("motif_syntax", ("--motif_syntax",), "regex"),
+        ("hmm", ("--hmm",), ""),
+    ):
+        option = values(*names)
+        globals_[key] = " ".join(option) if option else default
+    values("--motif_overlap")
+    globals_["motif_overlap"] = "--motif_overlap" in flags
+    aa_slice = values("-aa", "--slice")
+    globals_.update(aa_start="", aa_end="")
+    if len(aa_slice) == 2 and all(part.isdigit() for part in aa_slice):
+        globals_.update(aa_start=aa_slice[0], aa_end=aa_slice[1])
+    elif aa_slice:
+        warnings.append("Per-query AA slices cannot be loaded into the panel: "
+                        + " ".join(aa_slice))
+    globals_["adv_visible"] = any(globals_[key] for key in (
+        "add_seqs", "add_dbs", "reroot", "aa_start", "motif", "hmm"))
+    unsupported = sorted(set(flags) - consumed)
+    if unsupported:
+        warnings.append("Options without panel controls were not loaded: "
+                        + ", ".join(unsupported))
+    return {"globals": globals_, "rows": rows}, warnings
 
 
 def describe_command(command: str) -> list[str]:
@@ -533,6 +674,7 @@ class ToolTip:
         self.tip_window = None
         widget.bind("<Enter>", self._show)
         widget.bind("<Leave>", self._hide)
+        widget.bind("<Destroy>", self._hide, add="+")
 
     def _show(self, event=None):
         if self.tip_window:
@@ -944,6 +1086,19 @@ class GenomeSelectorApp:
         toolbar = tk.Frame(runs_frame)
         toolbar.pack(fill="x", pady=(4, 2), padx=4)
         ttk.Button(toolbar, text="Refresh", command=self._refresh_runs).pack(side="left")
+        ttk.Label(toolbar, text="Sort by:").pack(side="left", padx=(12, 4))
+        self.runs_sort_var = tk.StringVar(value=RUN_SORT_OPTIONS[0])
+        sort_menu = ttk.Combobox(toolbar, textvariable=self.runs_sort_var,
+                                 values=RUN_SORT_OPTIONS, state="readonly", width=16)
+        sort_menu.pack(side="left")
+        sort_menu.bind("<<ComboboxSelected>>", lambda event: self._refresh_runs())
+        self._selected_run = None
+        self.load_run_options_btn = ttk.Button(
+            toolbar, text="Load options", state="disabled",
+            command=self._load_run_options)
+        self.load_run_options_btn.pack(side="left", padx=(12, 0))
+        ToolTip(self.load_run_options_btn,
+                "Fill the top panel with the selected run's queries and options")
 
         # Packed before the list: the list canvas expands, so anything packed
         # after it is squeezed out of the tab entirely.
@@ -964,8 +1119,14 @@ class GenomeSelectorApp:
             lambda e: self.runs_canvas.configure(scrollregion=self.runs_canvas.bbox("all")))
         self.runs_canvas.create_window((0, 0), window=self.runs_inner, anchor="nw")
         self.runs_canvas.configure(yscrollcommand=runs_scroll.set)
-        self.runs_canvas.pack(side="left", fill="both", expand=True)
-        runs_scroll.pack(side="right", fill="y")
+        horizontal_scroll = ttk.Scrollbar(list_frame, orient="horizontal",
+                                           command=self.runs_canvas.xview)
+        self.runs_canvas.configure(xscrollcommand=horizontal_scroll.set)
+        list_frame.rowconfigure(0, weight=1)
+        list_frame.columnconfigure(0, weight=1)
+        self.runs_canvas.grid(row=0, column=0, sticky="nsew")
+        runs_scroll.grid(row=0, column=1, sticky="ns")
+        horizontal_scroll.grid(row=1, column=0, sticky="ew")
 
         self.notebook.add(runs_frame, text="Recent Runs")
         self._refresh_runs()
@@ -1002,7 +1163,9 @@ class GenomeSelectorApp:
         for widget in self.runs_inner.winfo_children():
             widget.destroy()
 
-        runs = scan_recent_runs()
+        runs = scan_recent_runs(limit=None)
+        self._run_metadata = {run[2]: read_run_metadata(run[2]) for run in runs}
+        runs = sort_runs(runs, self.runs_sort_var.get(), self._run_metadata)
         if not runs:
             tk.Label(self.runs_inner, text="No runs found.",
                      font=("TkDefaultFont", 9), fg="gray").grid(
@@ -1011,40 +1174,52 @@ class GenomeSelectorApp:
             return
 
         # Column headers
-        for col, text in enumerate(["Entry", "Timestamp", "Contents", "", "", "", ""]):
+        for col, text in enumerate(["Star", "Name", "Query", "Timestamp", "Contents",
+                                     "", "", "", ""]):
             tk.Label(self.runs_inner, text=text,
                      font=("TkDefaultFont", 9, "bold")).grid(
                 row=0, column=col, padx=6, pady=(4, 2), sticky="w")
 
         for i, (entry, timestamp, path) in enumerate(runs, start=1):
             display_ts = format_timestamp(timestamp)
+            run = (entry, timestamp, path)
+            metadata = self._run_metadata[path]
+            star = ttk.Button(self.runs_inner, text="★" if metadata["starred"] else "☆",
+                              width=3, command=lambda r=run: self._toggle_run_star(r))
+            star.grid(row=i, column=0, padx=4, pady=1)
+            ToolTip(star, "Unstar run" if metadata["starred"] else "Star run")
+            name = ttk.Button(self.runs_inner,
+                              text=truncate_name(metadata["name"], 22) or "Name run…",
+                              width=22, command=lambda r=run: self._rename_run(r))
+            name.grid(row=i, column=1, padx=4, pady=1, sticky="w")
+            ToolTip(name, (metadata["name"] + "\n" if metadata["name"] else "")
+                    + "Click to rename this run")
 
             tk.Label(self.runs_inner, text=entry, anchor="w").grid(
-                row=i, column=0, padx=6, pady=1, sticky="w")
+                row=i, column=2, padx=6, pady=1, sticky="w")
             tk.Label(self.runs_inner, text=display_ts, anchor="w").grid(
-                row=i, column=1, padx=6, pady=1, sticky="w")
+                row=i, column=3, padx=6, pady=1, sticky="w")
 
             # Summarize report files from the run folder
             contents = self._summarize_run(path)
             tk.Label(self.runs_inner, text=contents, anchor="w",
                      font=("TkDefaultFont", 8), fg="#555").grid(
-                row=i, column=2, padx=6, pady=1, sticky="w")
+                row=i, column=4, padx=6, pady=1, sticky="w")
 
             ttk.Button(self.runs_inner, text="Open Run", width=11,
                        command=lambda p=path: open_folder(p)).grid(
-                row=i, column=3, padx=6, pady=1)
+                row=i, column=5, padx=6, pady=1)
 
-            run = (entry, timestamp, path)
             ttk.Button(self.runs_inner, text="Details", width=9,
                        command=lambda r=run: self._show_run(r)).grid(
-                row=i, column=4, padx=(0, 4), pady=1)
+                row=i, column=6, padx=(0, 4), pady=1)
 
             # Copying selects the run too, so the panel always shows what was
             # just put on the clipboard.
             rerun = ttk.Button(
                 self.runs_inner, text="Re-run", width=9,
                 command=lambda r=run: self._copy_for_run(r, "run_command"))
-            rerun.grid(row=i, column=5, padx=(0, 4), pady=1)
+            rerun.grid(row=i, column=7, padx=(0, 4), pady=1)
             if read_run_command(path) is None:
                 # Nothing to copy: this run predates command logging.
                 rerun.state(["disabled"])
@@ -1054,19 +1229,69 @@ class GenomeSelectorApp:
             redraw = ttk.Button(
                 self.runs_inner, text="Re-draw", width=9,
                 command=lambda r=run: self._copy_for_run(r, "redraw_cmd"))
-            redraw.grid(row=i, column=6, padx=(0, 6), pady=1)
+            redraw.grid(row=i, column=8, padx=(0, 6), pady=1)
             ToolTip(redraw, "Copy the Rscript command that re-draws this run's "
                             "trees, e.g. from a subnode")
 
-        self._show_run(runs[0])
+        self._show_run(self._selected_run if self._selected_run in runs else runs[0])
+
+    def _update_run_metadata(self, run: tuple[str, str, Path], **changes):
+        metadata = read_run_metadata(run[2])
+        metadata.update(changes)
+        try:
+            write_run_metadata(run[2], metadata)
+        except OSError as exc:
+            messagebox.showerror("Could not save run", str(exc), parent=self.root)
+            return
+        self._selected_run = run
+        self._refresh_runs()
+
+    def _toggle_run_star(self, run: tuple[str, str, Path]):
+        self._update_run_metadata(run, starred=not read_run_metadata(run[2])["starred"])
+
+    def _rename_run(self, run: tuple[str, str, Path]):
+        name = simpledialog.askstring(
+            "Name run", f"Name for {run[0]} ({format_timestamp(run[1])}):\n"
+            "Leave blank to clear the name.",
+            initialvalue=read_run_metadata(run[2])["name"], parent=self.root)
+        if name is not None:
+            self._update_run_metadata(run, name=" ".join(name.split()))
 
     def _copy_for_run(self, run: tuple[str, str, Path], which: str):
         """Select a run, then copy one of its two commands."""
         self._show_run(run)
         self._copy(getattr(self, which))
 
+    def _load_run_options(self):
+        """Load the selected run into the editable form without launching a run."""
+        run = self._selected_run
+        command = read_run_command(run[2]) if run else None
+        if not command:
+            self._set_output("This run has no recorded command to load.")
+            self.notebook.select(0)
+            return
+        try:
+            settings, warnings = settings_from_command(
+                command, [row[-1] for row in self.rows])
+        except ValueError as exc:
+            self._set_output(f"Could not load run options: {exc}")
+            self.notebook.select(0)
+            return
+        # Recorded header rules may be custom text, absent from detected tokens.
+        self._apply_settings(settings, validate_headers=False)
+        self._update_selected_display()
+        self._save_settings()
+        message = (f"Loaded options from {run[0]} ({format_timestamp(run[1])}).\n"
+                   "Edit the fields above, then click Generate Command.")
+        if warnings:
+            message += "\n\n" + "\n".join(warnings)
+        self._set_output(message)
+        self.notebook.select(0)
+
     def _show_run(self, run: tuple[str, str, Path] | None):
         """Fill the details panel from a (entry, timestamp, path) run."""
+        self._selected_run = run
+        self.load_run_options_btn.state(["disabled"])
         if run is None:
             self.run_command = None
             self.redraw_cmd = None
@@ -1076,11 +1301,17 @@ class GenomeSelectorApp:
         entry, timestamp, path = run
         command = read_run_command(path)
         self.run_command = command
+        if command:
+            self.load_run_options_btn.state(["!disabled"])
         datasets = command_flags(command).get("--datasets") if command else None
         self.redraw_cmd = redraw_command(entry, timestamp,
                                          datasets[0] if datasets else None)
 
         lines = [f"Run:       {entry}   {format_timestamp(timestamp)}"]
+        metadata = self._run_metadata.get(path, {})
+        if metadata.get("name") or metadata.get("starred"):
+            lines.append("Name:      " + ("★ " if metadata.get("starred") else "")
+                         + (metadata.get("name") or "(unnamed)"))
         if command:
             lines.extend(describe_command(command))
         else:
@@ -1294,7 +1525,7 @@ class GenomeSelectorApp:
             "rows": self._snapshot_rows(),
         }
 
-    def _apply_rows(self, saved_rows: dict) -> list[str]:
+    def _apply_rows(self, saved_rows: dict, validate_headers: bool = True) -> list[str]:
         """Apply saved per-row state. Returns warnings for stale headers."""
         warnings = []
         for chk_var, hdr_var, sfx_var, n_var, q_var, _gpath, rel in self.rows:
@@ -1305,7 +1536,7 @@ class GenomeSelectorApp:
 
             hdr = str(row.get("hdr", "id"))
             tokens = self.row_tokens.get(rel, [])
-            if tokens and hdr not in tokens:
+            if validate_headers and tokens and hdr not in tokens:
                 warnings.append(
                     f"  {rel}: header '{hdr}' is no longer in this file — using 'id'")
                 hdr = "id"
@@ -1316,7 +1547,7 @@ class GenomeSelectorApp:
             q_var.set(str(row.get("q", "")))
         return warnings
 
-    def _apply_settings(self, data: dict) -> list[str]:
+    def _apply_settings(self, data: dict, validate_headers: bool = True) -> list[str]:
         globals_ = data.get("globals") or {}
         for key, attr in GLOBAL_SETTING_VARS.items():
             if key not in globals_:
@@ -1330,7 +1561,7 @@ class GenomeSelectorApp:
         if bool(globals_.get("adv_visible", False)) != self._adv_visible.get():
             self._toggle_advanced()
 
-        return self._apply_rows(data.get("rows") or {})
+        return self._apply_rows(data.get("rows") or {}, validate_headers=validate_headers)
 
     def _save_settings(self):
         try:

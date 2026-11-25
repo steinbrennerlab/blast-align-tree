@@ -277,7 +277,17 @@ bat-genome-selector
   `blast-align-tree …` command.
 - **Recent Runs tab.** Lists past `ENTRY/runs/TIMESTAMP/` directories in
   the current working directory so you can quickly jump back to prior
-  results.
+  results. Click **Name run…** (or an existing name) to name a specific run;
+  clear the name to remove it. Click its star to mark or unmark it. Names
+  and stars are saved in each run folder and survive restarting the selector.
+  Runs default to newest first; stars only move to the top when you choose
+  **Starred first** in **Sort by**. You can also sort by oldest first, query
+  (A–Z or Z–A), or name. All archived runs are available in the scrollable list.
+  Click **Details** for a run, then **Load options** to fill the top panel
+  with its queries, hit databases, headers, hit counts, and command options.
+  Edit the fields and click **Generate Command**. Loading replaces the current
+  fields and reports missing genomes or options without panel controls;
+  it is unavailable for older runs without a saved command.
 
 ## 📚 Full Tutorial
 
